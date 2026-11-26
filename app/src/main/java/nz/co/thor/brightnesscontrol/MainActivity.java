@@ -59,14 +59,8 @@ public class MainActivity extends Activity {
     private LinearLayout statusRows;
     private View brightnessPage;
     private View volumePage;
-    private android.widget.ProgressBar volTopBar;
-    private android.widget.ProgressBar volBottomBar;
-    private TextView volTopText;
-    private TextView volBottomText;
-    private TextView volNote;
     private LinearLayout volLinkedOptions;
-    private final java.util.concurrent.ExecutorService volWriter =
-            java.util.concurrent.Executors.newSingleThreadExecutor();
+
     /** Input controls; built once, shown inside the Settings popup. */
     private LinearLayout inputCard;
     private Button wakeSettingsButton;
@@ -197,15 +191,9 @@ public class MainActivity extends Activity {
         titleRow.addView(title);
         // Brightness | Volume tabs (the version lives in the Settings title).
         LinearLayout tabs = segmented(Prefs.UI_TAB, 0, new int[]{0, 1},
-                new String[]{"Brightness", "Volume"}, 30, this::applyTab);
-        titleRow.addView(tabs, new LinearLayout.LayoutParams(dp(170), dp(30)));
+                new String[]{"Brightness", "Volume"}, 32, this::applyTab);
+        titleRow.addView(tabs, new LinearLayout.LayoutParams(dp(200), dp(32)));
         ((LinearLayout.LayoutParams) tabs.getLayoutParams()).setMargins(dp(16), 0, 0, 0);
-        statusPill = text("", 13, true);
-        statusPill.setPadding(dp(12), dp(4), dp(12), dp(4));
-        statusPill.setFocusable(true);
-        statusPill.setClickable(true);
-        statusPill.setOnClickListener(v -> showSetupDialog());
-        titleRow.addView(statusPill, margins(10, 0, 0, 0));
         addLevelBars(titleRow);
         heading.addView(titleRow);
         header.addView(heading, new LinearLayout.LayoutParams(
@@ -237,31 +225,33 @@ public class MainActivity extends Activity {
         header.addView(enabledSwitch);
         root.addView(header, matchMargins(0, 0, 0, 2));
 
+        // [ Bindings or Volume keys (two-thirds) | Status + Reset (both tabs) ]
         LinearLayout columns = new LinearLayout(this);
         columns.setOrientation(LinearLayout.HORIZONTAL);
         root.addView(columns, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        brightnessPage = columns;
-        volumePage = buildVolumePage();
-        root.addView(volumePage, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        applyTab();
+        android.widget.FrameLayout pages = new android.widget.FrameLayout(this);
+        LinearLayout.LayoutParams wide = weightedCardMargins(0, 0, 6, 0);
+        wide.weight = 2f;
+        columns.addView(pages, wide);
 
         LinearLayout setup = card();
         LinearLayout mappings = card();
-        // Bindings | Input | Status + Reset. Brightness and Sleep/Wake live in
-        // the Settings popup (gear in the header). Columns scroll if needed.
-        // Bindings span two columns; Input lives in the Settings popup.
-        LinearLayout.LayoutParams wide = weightedCardMargins(0, 0, 6, 0);
-        wide.weight = 2f;
-        columns.addView(scrollCard(mappings), wide);
-        inputCard = setup;
+        inputCard = setup; // shown in the Settings popup
+        brightnessPage = scrollCard(mappings);
+        pages.addView(brightnessPage, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        volumePage = buildVolumePage();
+        pages.addView(volumePage, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         LinearLayout rightColumn = new LinearLayout(this);
         rightColumn.setOrientation(LinearLayout.VERTICAL);
         rightColumn.addView(scrollCard(statusCard()), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         rightColumn.addView(resetCard(), matchMargins(0, 12, 0, 0));
         columns.addView(rightColumn, weightedCardMargins(6, 0, 0, 0));
+        applyTab();
 
         // Permission controls live in the setup popup, not on the main screen.
         setupPanel = new LinearLayout(this);
@@ -858,7 +848,9 @@ public class MainActivity extends Activity {
     }
 
     private void applyTab() {
+        if (brightnessPage != null) haptic(getWindow().getDecorView());
         boolean volume = prefs.getInt(Prefs.UI_TAB, 0) == 1;
+        refreshLevelBars();
         if (brightnessPage != null) brightnessPage.setVisibility(volume ? View.GONE : View.VISIBLE);
         if (volumePage != null) volumePage.setVisibility(volume ? View.VISIBLE : View.GONE);
         refreshVolumePage();
@@ -868,14 +860,11 @@ public class MainActivity extends Activity {
 
     private static final String[][] VOL_MODES = {
             {"Top screen", "Android\u2019s normal volume"},
-            {"Bottom screen", "Volume keys change the bottom screen"},
+            {"Bottom screen", "Only the bottom screen"},
             {"Linked", "Both screens move together"},
             {"Follow focus", "The screen you last used"}};
 
-    private LinearLayout buildVolumePage() {
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.HORIZONTAL);
-
+    private ScrollView buildVolumePage() {
         // Left (two columns wide): what the volume keys do.
         LinearLayout keys = card();
         LinearLayout head = new LinearLayout(this);
@@ -920,8 +909,8 @@ public class MainActivity extends Activity {
         for (int i = 0; i < VOL_MODES.length; i++) {
             TextView tile = text("", 15, true);
             tile.setText(styledTile(VOL_MODES[i][0], VOL_MODES[i][1]));
-            tile.setPadding(dp(12), dp(12), dp(10), dp(12));
-            tile.setMinHeight(dp(84));
+            tile.setPadding(dp(12), dp(8), dp(10), dp(8));
+            tile.setMinHeight(dp(64));
             tile.setGravity(Gravity.CENTER_VERTICAL);
             tile.setFocusable(true);
             tile.setClickable(true);
@@ -941,8 +930,9 @@ public class MainActivity extends Activity {
         TextView stepValue = valueText();
         keys.addView(valueRow("Step per press", stepValue), matchMargins(0, 2, 0, 0));
         SeekBar step = new SeekBar(this);
-        step.setMax(4);
-        int savedStep = Math.max(1, Math.min(5, prefs.getInt(Prefs.VOL_STEP, 1)));
+        step.setMax(9);
+        step.setTickMark(tickMark());
+        int savedStep = Math.max(1, Math.min(10, prefs.getInt(Prefs.VOL_STEP, 1)));
         step.setProgress(savedStep - 1);
         stepValue.setText(String.valueOf(savedStep));
         step.setOnSeekBarChangeListener(new SimpleSeekListener() {
@@ -951,7 +941,7 @@ public class MainActivity extends Activity {
                 if (fromUser) prefs.edit().putInt(Prefs.VOL_STEP, value + 1).apply();
             }
         });
-        keys.addView(step, matchMargins(0, 0, 0, 8));
+        keys.addView(step, matchMargins(0, 0, 0, 4));
 
         keys.addView(text("Linked", 14, true), matchMargins(0, 2, 0, 2));
         volLinkedOptions = new LinearLayout(this);
@@ -965,48 +955,18 @@ public class MainActivity extends Activity {
         keys.addView(volLinkedOptions, matchMargins(0, 0, 0, 0));
         paint[0].run();
 
-        LinearLayout.LayoutParams wide = weightedCardMargins(0, 0, 6, 0);
-        wide.weight = 2f;
-        page.addView(scrollCard(keys), wide);
-
-        // Right: live levels and notes.
-        LinearLayout levels = card();
-        levels.addView(section("Levels"), margins(0, 4, 0, 8));
-        volTopText = valueText();
-        volTopBar = levelBar();
-        levels.addView(valueRow("Top screen", volTopText), matchMargins(0, 0, 0, 2));
-        levels.addView(volTopBar, matchMargins(0, 0, 0, 10));
-        ((LinearLayout.LayoutParams) volTopBar.getLayoutParams()).height = dp(8);
-        volBottomText = valueText();
-        volBottomBar = levelBar();
-        volBottomBar.setMax(VolumeLink.SECONDARY_MAX);
-        levels.addView(valueRow("Bottom screen", volBottomText), matchMargins(0, 0, 0, 2));
-        levels.addView(volBottomBar, matchMargins(0, 0, 0, 8));
-        ((LinearLayout.LayoutParams) volBottomBar.getLayoutParams()).height = dp(8);
-        LinearLayout nudge = new LinearLayout(this);
-        Button minus = button("Bottom \u2212");
-        Button plus = button("Bottom +");
-        minus.setOnClickListener(v -> nudgeBottom(-1));
-        plus.setOnClickListener(v -> nudgeBottom(1));
-        nudge.addView(minus, new LinearLayout.LayoutParams(0, dp(38), 1f));
-        LinearLayout.LayoutParams plusLp = new LinearLayout.LayoutParams(0, dp(38), 1f);
-        plusLp.setMargins(dp(8), 0, 0, 0);
-        nudge.addView(plus, plusLp);
-        levels.addView(nudge, matchMargins(0, 0, 0, 8));
-        Button sync = button("Match bottom to top");
-        sync.setOnClickListener(v -> {
-            prefs.edit().putInt(Prefs.VOL_BALANCE, 0).apply();
-            AudioManager audio = getSystemService(AudioManager.class);
-            int max = Math.max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
-            int main = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
-            writeBottom(Math.round(main * (float) VolumeLink.SECONDARY_MAX / max));
-        });
-        levels.addView(sync, matchMargins(0, 0, 0, 12));
-        volNote = text("", 13, false);
-        levels.addView(volNote, matchMargins(0, 0, 0, 0));
-        page.addView(scrollCard(levels), weightedCardMargins(6, 0, 0, 0));
+        ScrollView page = scrollCard(keys);
         polish(page);
         return page;
+    }
+
+    /** Small dot drawn at each step of a discrete slider. */
+    private android.graphics.drawable.Drawable tickMark() {
+        GradientDrawable dot = new GradientDrawable();
+        dot.setShape(GradientDrawable.OVAL);
+        dot.setColor(Palette.OVERLAY1);
+        dot.setSize(dp(4), dp(4));
+        return dot;
     }
 
     private CharSequence styledTile(String title, String detail) {
@@ -1028,46 +988,8 @@ public class MainActivity extends Activity {
         return toggle;
     }
 
-    private void nudgeBottom(int delta) {
-        int current = VolumeLink.readSecondary(this);
-        writeBottom((current < 0 ? 0 : current) + delta);
-    }
-
-    /** Bottom-screen volume can only be written through Shizuku or root. */
-    private void writeBottom(int value) {
-        int target = VolumeLink.clamp(value);
-        volWriter.execute(() -> {
-            boolean ok = RootAccessibilityController.shell(
-                    "settings put system " + VolumeLink.SECONDARY_KEY + " " + target) != null;
-            runOnUiThread(() -> {
-                if (!ok) Toast.makeText(this, "Bottom-screen volume needs Shizuku or root",
-                        Toast.LENGTH_SHORT).show();
-                refreshVolumePage();
-            });
-        });
-    }
-
     private void refreshVolumePage() {
-        if (volTopBar == null || volumePage == null || volumePage.getVisibility() != View.VISIBLE) return;
-        AudioManager audio = getSystemService(AudioManager.class);
-        int max = Math.max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
-        int main = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
-        volTopBar.setMax(max);
-        volTopBar.setProgress(main);
-        volTopText.setText(main + " / " + max);
-        int bottom = VolumeLink.readSecondary(this);
-        volBottomBar.setProgress(Math.max(0, bottom));
-        volBottomText.setText(bottom < 0 ? "\u2014" : bottom + " / " + VolumeLink.SECONDARY_MAX);
-        StringBuilder note = new StringBuilder();
-        boolean shizuku = ShizukuSupport.available();
-        note.append(shizuku ? "\u25CF  Shizuku connected: bottom-screen volume available."
-                : "\u25CF  Bottom-screen volume needs Shizuku (or root). Top screen works without it.");
-        if (volumeLinkConflict()) {
-            note.append("\n\n\u25CF  Thor Volume Link is also handling the volume keys. "
-                    + "Turn its accessibility service off to avoid double steps.");
-        }
-        volNote.setText(note);
-        volNote.setTextColor(shizuku && !volumeLinkConflict() ? Palette.GREEN : Palette.PEACH);
+        refreshStatusCard();
     }
 
     private boolean volumeLinkConflict() {
@@ -1254,40 +1176,75 @@ public class MainActivity extends Activity {
     /** At-a-glance status of everything the app depends on, plus quick tips. */
     private LinearLayout statusCard() {
         LinearLayout card = card();
-        card.addView(section("Status"), margins(0, 4, 0, 6));
+        // Title with the overall Ready / Setup needed pill (tap for setup).
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(section("Status"), new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        statusPill = text("", 13, true);
+        statusPill.setPadding(dp(12), dp(4), dp(12), dp(4));
+        statusPill.setFocusable(true);
+        statusPill.setClickable(true);
+        statusPill.setOnClickListener(v -> showSetupDialog());
+        head.addView(statusPill);
+        card.addView(head, matchMargins(0, 4, 0, 6));
         statusRows = new LinearLayout(this);
         statusRows.setOrientation(LinearLayout.VERTICAL);
         card.addView(statusRows, matchMargins(0, 0, 0, 0));
         refreshStatusCard();
 
-        card.addView(section("Tips"), margins(0, 8, 0, 2));
-        String[] tips = {
-                "Long-press the app icon for a Turn on / off shortcut.",
-                "Add the Thor\u2019s Lightning tile to Quick Settings.",
-                "Emergency off: hold a modifier and press Brighter and Dimmer together."};
-        for (String tip : tips) {
-            TextView line = text("\u2022  " + tip, 12, false);
-            line.setTextColor(Palette.SUBTEXT0);
-            card.addView(line, matchMargins(0, 2, 0, 2));
-        }
         return card;
     }
 
+    private String statusSignature = "";
+
     private void refreshStatusCard() {
         if (statusRows == null) return;
-        statusRows.removeAllViews();
         boolean service = isAccessibilityServiceEnabled();
         boolean write = Settings.System.canWrite(this);
         boolean shizuku = ShizukuSupport.available();
         boolean dpad = prefs.getBoolean(Prefs.ROOT_AXES, false);
+        boolean fade = prefs.getBoolean(Prefs.GENTLE_WAKE, false);
+        boolean vol = prefs.getBoolean(Prefs.VOL_ENABLED, false);
+        String volMode = vol ? VOL_MODES[prefs.getInt(Prefs.VOL_MODE, 0)][0] : "Off";
+        AudioManager audio = getSystemService(AudioManager.class);
+        int max = Math.max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+        int main = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+        int bottom = VolumeLink.readSecondary(this);
+        boolean conflict = volumeLinkConflict();
+        String signature = service + "," + write + "," + shizuku + "," + dpad + "," + fade + ","
+                + volMode + "," + main + "/" + max + "," + bottom + "," + conflict;
+        if (signature.equals(statusSignature)) return;
+        statusSignature = signature;
+        statusRows.removeAllViews();
+        addStatusGroup("Brightness", true);
         addStatusRow("Key detection", service ? "On" : "Needed", service);
         addStatusRow("Brightness access", write ? "Allowed" : "Needed", write);
         addStatusRow("Shizuku", shizuku ? "Connected" : "Off", shizuku);
         addStatusRow("D-pad / Joystick", dpad ? "On" : "Off", dpad);
-        boolean fade = prefs.getBoolean(Prefs.GENTLE_WAKE, false);
         addStatusRow("Fade in on wake", fade ? "On" : "Off", fade);
-        boolean vol = prefs.getBoolean(Prefs.VOL_ENABLED, false);
-        addStatusRow("Volume keys", vol ? VOL_MODES[prefs.getInt(Prefs.VOL_MODE, 0)][0] : "Off", vol);
+        addStatusGroup("Volume", false);
+        addStatusRow("Volume keys", volMode, vol);
+        addStatusRow("Top volume", main + " / " + max, true);
+        addStatusRow("Bottom volume", bottom < 0 ? "\u2014" : bottom + " / " + VolumeLink.SECONDARY_MAX,
+                bottom >= 0);
+        if (conflict) addStatusRow("Thor Volume Link", "Turn off", false);
+    }
+
+    /** Small subheading that splits the Status list into groups. */
+    private void addStatusGroup(String title, boolean first) {
+        TextView group = text(title, 13, true);
+        group.setTextColor(Palette.SUBTEXT0);
+        group.setLetterSpacing(0.05f);
+        statusRows.addView(group, matchMargins(0, first ? 0 : 8, 0, 2));
+        if (!first) {
+            View line = new View(this);
+            line.setBackgroundColor(Palette.surface0);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+            lp.setMargins(0, dp(10), 0, 0);
+            statusRows.addView(line, statusRows.getChildCount() - 1, lp);
+        }
     }
 
     private void addStatusRow(String label, String value, boolean good) {
@@ -1353,8 +1310,13 @@ public class MainActivity extends Activity {
         bottomLevelText.setTextColor(Palette.YELLOW);
         topLevelBar = levelBar();
         bottomLevelBar = levelBar();
+        // Sun or speaker: what the bars below are showing.
+        levelIcon = new android.widget.ImageView(this);
+        levelIcon.setImageTintList(ColorStateList.valueOf(Palette.SUBTEXT0));
+        parent.addView(levelIcon, new LinearLayout.LayoutParams(dp(22), dp(22)));
+        ((LinearLayout.LayoutParams) levelIcon.getLayoutParams()).setMargins(dp(16), 0, 0, 0);
         // \u25B2 = top screen, \u25BC = bottom screen (words don't fit beside the tabs).
-        parent.addView(headerLevel("\u25B2", topLevelBar, topLevelText), margins(14, 0, 0, 0));
+        parent.addView(headerLevel("\u25B2", topLevelBar, topLevelText), margins(8, 0, 0, 0));
         parent.addView(headerLevel("\u25BC", bottomLevelBar, bottomLevelText), margins(10, 0, 0, 0));
         refreshLevelBars();
     }
@@ -1414,6 +1376,24 @@ public class MainActivity extends Activity {
     /** Reads both panels' current brightness (top: 0-255, bottom: 0-100). */
     private void refreshLevelBars() {
         if (topLevelBar == null) return;
+        if (prefs.getInt(Prefs.UI_TAB, 0) == 1) {
+            // Volume tab: the header shows both screens' volume instead.
+            AudioManager audio = getSystemService(AudioManager.class);
+            int max = Math.max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+            int main = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+            int bottom = VolumeLink.readSecondary(this);
+            setLevelTint(Palette.LAVENDER);
+            topLevelBar.setMax(max);
+            topLevelBar.setProgress(main);
+            bottomLevelBar.setMax(VolumeLink.SECONDARY_MAX);
+            bottomLevelBar.setProgress(Math.max(0, bottom));
+            topLevelText.setText(main + "/" + max);
+            bottomLevelText.setText(bottom < 0 ? "\u2014" : bottom + "/" + VolumeLink.SECONDARY_MAX);
+            return;
+        }
+        setLevelTint(Palette.YELLOW);
+        topLevelBar.setMax(100);
+        bottomLevelBar.setMax(100);
         int top;
         try {
             top = Math.round(Settings.System.getInt(getContentResolver(),
@@ -1438,6 +1418,23 @@ public class MainActivity extends Activity {
         bottomLevelBar.setProgress(Math.max(0, bottom));
         topLevelText.setText(top < 0 ? "\u2014" : top + "%");
         bottomLevelText.setText(bottom < 0 ? "\u2014" : bottom + "%");
+    }
+
+    private int levelTint;
+    private android.widget.ImageView levelIcon;
+
+    private void setLevelTint(int color) {
+        if (levelTint == color) return;
+        levelTint = color;
+        if (levelIcon != null) {
+            levelIcon.setImageResource(color == Palette.LAVENDER ? R.drawable.ic_speaker : R.drawable.ic_sun);
+            levelIcon.setImageTintList(ColorStateList.valueOf(color));
+        }
+        ColorStateList tint = ColorStateList.valueOf(color);
+        topLevelBar.setProgressTintList(tint);
+        bottomLevelBar.setProgressTintList(tint);
+        topLevelText.setTextColor(color);
+        bottomLevelText.setTextColor(color);
     }
 
     /** One tappable chip ("Brighter / Vol +") that records its control when tapped. */
@@ -1948,10 +1945,20 @@ public class MainActivity extends Activity {
     }
 
     /** Short tick when a control is tapped or activated with the controller. */
+    private long lastHaptic;
+
     private void haptic(View view) {
         if (view == null) return;
-        view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK,
-                android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - lastHaptic < 120) return; // one tick per action
+        lastHaptic = now;
+        // The Thor's motor only supports CLICK/TICK-style effects; the view
+        // haptic constants map to TEXTURE_TICK there, which it can't play.
+        android.os.Vibrator vibrator = getSystemService(android.os.Vibrator.class);
+        if (vibrator != null && vibrator.hasVibrator()) {
+            vibrator.vibrate(android.os.VibrationEffect.createPredefined(
+                    android.os.VibrationEffect.EFFECT_TICK));
+        }
     }
 
     /** No click sounds anywhere in the app; haptics replace them. */
