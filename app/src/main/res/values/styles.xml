@@ -1,25 +1,28 @@
 <resources>
-    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+    <!-- Catppuccin Macchiato. The AMOLED variant is applied in code (Palette). -->
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#6750A4</item>
-        <item name="android:navigationBarColor">#F7F2FA</item>
-        <item name="android:statusBarColor">#6750A4</item>
+        <item name="android:soundEffectsEnabled">false</item>
+        <item name="android:colorAccent">#C6A0F6</item>
+        <item name="android:colorPrimary">#C6A0F6</item>
+        <item name="android:colorBackground">#24273A</item>
+        <item name="android:windowBackground">@color/macchiato_base</item>
+        <item name="android:textColorPrimary">#CAD3F5</item>
+        <item name="android:textColorSecondary">#A5ADCB</item>
+        <item name="android:navigationBarColor">#181926</item>
+        <item name="android:statusBarColor">#181926</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:alertDialogTheme">@style/AppTheme.Dialog</item>
     </style>
 
-    <style name="AppTheme.Light" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="AppTheme.Dialog" parent="android:style/Theme.Material.Dialog.Alert">
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#6750A4</item>
-        <item name="android:navigationBarColor">#F7F2FA</item>
-        <item name="android:statusBarColor">#6750A4</item>
-        <item name="android:windowLightStatusBar">false</item>
-    </style>
-
-    <style name="AppTheme.Dark" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#D0BCFF</item>
-        <item name="android:navigationBarColor">#1C1B1F</item>
-        <item name="android:statusBarColor">#332D41</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:soundEffectsEnabled">false</item>
+        <item name="android:colorAccent">#C6A0F6</item>
+        <item name="android:colorBackground">#1E2030</item>
+        <item name="android:textColorPrimary">#CAD3F5</item>
+        <item name="android:textColorSecondary">#A5ADCB</item>
+        <item name="android:textColorAlertDialogListItem">#CAD3F5</item>
+        <item name="android:windowBackground">@drawable/dialog_rounded</item>
     </style>
 </resources>

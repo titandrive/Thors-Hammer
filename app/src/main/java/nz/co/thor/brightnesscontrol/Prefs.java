@@ -26,6 +26,7 @@ final class Prefs {
     static final String CAPTURING = "capturing";
     static final String TARGET = "target";
     static final String THEME = "theme";
+    static final String AMOLED = "amoled";
     static final String UP_KEY = "up_key";
     static final String DOWN_KEY = "down_key";
     // Binding B: an optional second modifier + Brighter/Dimmer set with its

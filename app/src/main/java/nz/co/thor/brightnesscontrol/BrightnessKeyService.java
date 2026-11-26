@@ -24,7 +24,6 @@ import java.util.concurrent.Executors;
 
 public class BrightnessKeyService extends AccessibilityService {
     private static final String TAG = "ThorsLightningWake";
-    private static final String KEY_TAG = "ThorsLightningKeys";
     // Temporary diagnostic mode: verify that close writes zero and that the
     // system does not restore brightness on open before re-enabling the ramp.
     private static final boolean WAKE_ZERO_TEST_MODE = false;
@@ -233,9 +232,6 @@ public class BrightnessKeyService extends AccessibilityService {
         int downKeyB = prefs.getInt(Prefs.B_DOWN_KEY, KeyEvent.KEYCODE_VOLUME_DOWN);
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         boolean reserveModifier = prefs.getBoolean(Prefs.CONSUME_MODIFIER, false);
-        Log.d(KEY_TAG, "key=" + KeyEvent.keyCodeToString(keyCode) + (down ? " down" : " up")
-                + " repeat=" + event.getRepeatCount() + " modA=" + modifierDown + " modB=" + modifierBDown
-                + " enabled=" + isRemappingEnabled() + " interactive=" + isScreenInteractive());
 
         if (keyCode == modifier && !rootModifierMapped(prefs)) {
             modifierDown = down;
@@ -324,7 +320,6 @@ public class BrightnessKeyService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
-        Log.d(KEY_TAG, "onServiceConnected");
         Prefs.migrateDpadButtons(Prefs.get(this));
         registerReceiver(screenReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
         IntentFilter screenOn = new IntentFilter(Intent.ACTION_SCREEN_ON);
@@ -520,7 +515,6 @@ public class BrightnessKeyService extends AccessibilityService {
     }
 
     private void adjustBrightness(int direction, int stepPercent, int target) {
-        Log.d(KEY_TAG, "adjust dir=" + direction + " step=" + stepPercent + " target=" + target);
         if (!Settings.System.canWrite(this)) {
             Toast.makeText(this, "Allow Modify system settings for Thor’s Lightning", Toast.LENGTH_LONG).show();
             stopRepeating();
@@ -613,8 +607,6 @@ public class BrightnessKeyService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
-        Log.d(KEY_TAG, "onInterrupt: clearing modA=" + modifierDown + " modB=" + modifierBDown
-                + " suspendActive=" + Prefs.get(this).getBoolean(Prefs.SUSPEND_SERVICE_ACTIVE, false));
         // Accessibility may interrupt/reconnect while the enabled-service
         // list is being edited for a modifier hold. Keep the selected conflict
         // suspended until the modifier is actually released.

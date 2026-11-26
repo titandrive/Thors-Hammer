@@ -53,6 +53,24 @@ public class MainActivity extends Activity {
     private TextView brighterMappingLabel;
     private TextView dimmerMappingLabel;
     private LinearLayout bindingsContainer;
+    private TextView setupHint;
+    private LinearLayout setupPanel;
+    private TextView statusPill;
+    private Button wakeSettingsButton;
+    private AlertDialog setupDialog;
+    private TextView bindingSummaryA;
+    private TextView bindingSummaryB;
+    private android.widget.ProgressBar topLevelBar;
+    private android.widget.ProgressBar bottomLevelBar;
+    private TextView topLevelText;
+    private TextView bottomLevelText;
+    private final Handler levelHandler = new Handler(Looper.getMainLooper());
+    private final Runnable levelPoller = new Runnable() {
+        @Override public void run() {
+            refreshLevelBars();
+            levelHandler.postDelayed(this, 300);
+        }
+    };
     private TextView bModifierMappingLabel;
     private TextView bBrighterMappingLabel;
     private TextView bDimmerMappingLabel;
@@ -91,6 +109,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         prefs = Prefs.get(this);
         prefs.edit().putInt(Prefs.THEME, Prefs.THEME_SYSTEM).apply();
+        Palette.load(prefs);
         // A crashed or force-stopped recording must not leave the service in
         // capture mode on the next launch.
         prefs.edit().putBoolean(Prefs.CAPTURING, false).apply();
@@ -143,6 +162,9 @@ public class MainActivity extends Activity {
         }
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Palette.base);
+        getWindow().setStatusBarColor(Palette.crust);
+        getWindow().setNavigationBarColor(Palette.crust);
         // Let the cards use the available height down to the navigation bar.
         root.setPadding(dp(16), dp(2), dp(16), dp(14));
 
@@ -150,18 +172,37 @@ public class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout heading = new LinearLayout(this);
         heading.setOrientation(LinearLayout.VERTICAL);
-        TextView title = text("Thor's Lightning \u26A1 " + appVersionName()
-                + " - Controller-Based Brightness Control", 22, true);
-        heading.addView(title);
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("Thor's Lightning \u26A1", 22, true);
+        titleRow.addView(title);
+        TextView version = text("v" + appVersionName().replaceFirst("^v", ""), 12, true);
+        version.setTextColor(Palette.MAUVE);
+        GradientDrawable chip = new GradientDrawable();
+        chip.setColor(Palette.surface0);
+        chip.setCornerRadius(dp(CORNER));
+        version.setBackground(chip);
+        version.setPadding(dp(8), dp(2), dp(8), dp(2));
+        titleRow.addView(version, margins(10, 0, 0, 0));
+        statusPill = text("", 13, true);
+        statusPill.setPadding(dp(12), dp(4), dp(12), dp(4));
+        statusPill.setFocusable(true);
+        statusPill.setClickable(true);
+        statusPill.setOnClickListener(v -> showSetupDialog());
+        titleRow.addView(statusPill, margins(10, 0, 0, 0));
+        heading.addView(titleRow);
         header.addView(heading, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
+
         enabledSwitch = new Switch(this);
-        enabledSwitch.setText("Shortcut enabled");
-        enabledSwitch.setTextSize(15);
+        enabledSwitch.setTextSize(14);
         enabledSwitch.setChecked(prefs.getBoolean(Prefs.ENABLED, true));
-        enabledSwitch.setOnCheckedChangeListener((button, checked) ->
-                prefs.edit().putBoolean(Prefs.ENABLED, checked).apply());
+        enabledSwitch.setText(enabledSwitch.isChecked() ? "Enabled" : "Disabled");
+        enabledSwitch.setOnCheckedChangeListener((button, checked) -> {
+            prefs.edit().putBoolean(Prefs.ENABLED, checked).apply();
+            button.setText(checked ? "Enabled" : "Disabled");
+        });
         header.addView(enabledSwitch);
         root.addView(header, matchMargins(0, 0, 0, 2));
 
@@ -173,27 +214,20 @@ public class MainActivity extends Activity {
         LinearLayout setup = card();
         LinearLayout mappings = card();
         LinearLayout behaviour = card();
-        columns.addView(setup, weightedCardMargins(0, 0, 6, 0));
-        LinearLayout.LayoutParams mappingCardParams = weightedCardMargins(6, 0, 6, 0);
-        mappingCardParams.weight = 1f;
-        // Two bindings no longer fit the fixed card height; let it scroll.
-        ScrollView mappingScroll = new ScrollView(this);
-        mappingScroll.setFillViewport(true);
-        mappingScroll.setVerticalScrollBarEnabled(false);
-        mappingScroll.setBackground(mappings.getBackground());
-        mappings.setBackground(null);
-        mappingScroll.addView(mappings, new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        columns.addView(mappingScroll, mappingCardParams);
-        columns.addView(behaviour, weightedCardMargins(6, 0, 0, 0));
+        // Each column scrolls inside its card so nothing is clipped.
+        columns.addView(scrollCard(mappings), weightedCardMargins(0, 0, 6, 0));
+        columns.addView(scrollCard(behaviour), weightedCardMargins(6, 0, 6, 0));
+        columns.addView(scrollCard(setup), weightedCardMargins(6, 0, 0, 0));
 
-        setup.addView(section("Setup"));
+        // Permission controls live in the setup popup, not on the main screen.
+        setupPanel = new LinearLayout(this);
+        setupPanel.setOrientation(LinearLayout.VERTICAL);
         permissionStatus = text("", 14, true);
         permissionStatus.setVisibility(View.GONE);
-        setup.addView(permissionStatus, margins(0, 2, 0, 2));
-        TextView setupHint = text("Tap once to complete both required permissions.", 11, false);
-        setupHint.setTextColor(themeColor(android.R.attr.textColorSecondary));
-        setup.addView(setupHint, margins(0, 0, 0, 5));
+        setupPanel.addView(permissionStatus, margins(0, 2, 0, 2));
+        setupHint = text("Tap once to complete both required permissions.", 12, false);
+        setupHint.setTextColor(Palette.SUBTEXT0);
+        setupPanel.addView(setupHint, margins(0, 0, 0, 5));
 
         brightnessPermissionButton = button("Set up permissions");
         styleSetupButton(brightnessPermissionButton);
@@ -233,7 +267,7 @@ public class MainActivity extends Activity {
             }
             openBrightnessPermission();
         });
-        setup.addView(brightnessPermissionButton, matchMargins(0, 0, 0, 3));
+        setupPanel.addView(brightnessPermissionButton, matchMargins(0, 0, 0, 3));
         brightnessPermissionButton.getLayoutParams().height = dp(36);
 
         keyDetectionButton = button("2. Key detection");
@@ -254,7 +288,7 @@ public class MainActivity extends Activity {
             prefs.edit().putBoolean(Prefs.ADVANCE_TO_BRIGHTNESS_PENDING, true).apply();
             openKeyDetection();
         });
-        setup.addView(keyDetectionButton, matchMargins(0, 0, 0, 0));
+        setupPanel.addView(keyDetectionButton, matchMargins(0, 0, 0, 0));
         keyDetectionButton.setVisibility(View.GONE);
         brightnessStatus = text("", 13, false);
         keyStatus = text("", 13, false);
@@ -264,40 +298,47 @@ public class MainActivity extends Activity {
         // of duplicate status lines so Root options can use the space.
 
         addRootControls(setup);
+        addReserveControls(setup);
 
         mappings.addView(section("Bindings"));
         TextView mappingHint = text("Hold a binding's modifier, then press its Brighter or Dimmer. "
                 + "Tap Record and press the control you want to assign.", 12, false);
-        mappingHint.setTextColor(themeColor(android.R.attr.textColorSecondary));
+        mappingHint.setTextColor(Palette.SUBTEXT0);
         mappings.addView(mappingHint, margins(0, 3, 0, 6));
         bindingsContainer = new LinearLayout(this);
         bindingsContainer.setOrientation(LinearLayout.VERTICAL);
         mappings.addView(bindingsContainer, matchMargins(0, 0, 0, 0));
-        captureMessage = text("", 11, false);
-        mappings.addView(captureMessage, margins(0, 2, 0, 6));
-        setStaticCaptureMessage();
         rebuildBindings();
         addBehaviourControls(behaviour);
+        addLevelBars(behaviour);
+        polish(root);
+        View decor = getWindow().getDecorView();
+        muteClicks(decor);
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(() -> muteClicks(decor));
         setContentView(root);
         root.post(() -> {
-            maybeShowSetupGuide();
-            root.postDelayed(this::maybeShowConflictWarning, 350);
+            if (!requiredPermissionsReady() || !prefs.getBoolean(Prefs.SETUP_GUIDE_SHOWN, false)) {
+                showSetupDialog();
+            } else {
+                root.postDelayed(this::maybeShowConflictWarning, 350);
+            }
         });
     }
 
     private void addRootControls(LinearLayout parent) {
         LinearLayout rootBox = new LinearLayout(this);
         rootBox.setOrientation(LinearLayout.VERTICAL);
-        rootBox.setPadding(dp(6), dp(4), dp(6), dp(8));
-        GradientDrawable rootBackground = new GradientDrawable();
-        rootBackground.setColor(Color.argb(45, 190, 165, 235));
-        rootBackground.setCornerRadius(dp(8));
-        rootBackground.setStroke(dp(1), Color.argb(90, 190, 165, 235));
-        rootBox.setBackground(rootBackground);
-        parent.addView(rootBox, margins(0, 5, 0, 0));
-        rootBox.addView(section("Privileged input options"), margins(0, 0, 0, 0));
-        rootStatus = text("Root or Shizuku access is optional for regular button mappings.", 12, false);
-        rootStatus.setTextColor(themeColor(android.R.attr.textColorSecondary));
+        parent.addView(rootBox, matchMargins(0, 0, 0, 0));
+        rootBox.addView(headerWithInfo("Input", "Input",
+                "Root or Shizuku is optional. Regular button mappings work without it.\n\n"
+                + "Enable D-pad / Joystick: lets Brighter and Dimmer use D-pad or stick directions "
+                + "(read through root or Shizuku). Games may still receive the same movement.\n\n"
+                + "Suspend services during hold: the selected accessibility services are turned off "
+                + "while a modifier is held and restored when it is released, so two apps don't react "
+                + "to the same buttons. Known conflicts are pre-selected when root or Shizuku is enabled."),
+                matchMargins(0, 0, 0, 0));
+        rootStatus = text("", 12, false);
+        rootStatus.setTextColor(Palette.SUBTEXT0);
         rootBox.addView(rootStatus, margins(0, 0, 0, 1));
         Button rootCheckFirst = button("Check privilege access");
         rootCheckPrimary = rootCheckFirst;
@@ -306,7 +347,7 @@ public class MainActivity extends Activity {
         rootCheckFirst.setHeight(dp(36));
         rootCheckFirst.setPadding(dp(6), 0, dp(6), 0);
         rootCheckFirst.setGravity(Gravity.CENTER);
-        rootCheckFirst.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(95, 95, 98)));
+        rootCheckFirst.setBackgroundTintList(ColorStateList.valueOf(Palette.surface1));
         rootCheckFirst.setOnClickListener(v -> checkRootAccess(rootCheckFirst));
         rootBox.addView(rootCheckFirst, matchMargins(0, 1, 0, -4));
         rootCheckFirst.getLayoutParams().height = dp(36);
@@ -345,14 +386,12 @@ public class MainActivity extends Activity {
             updateRootCheckVisual(rootCheckFirst);
             if (checked) autoConfigureVolumeLinkSuspension();
         });
-        TextView suspendHint = text("Selected accessibility services are temporarily disabled while the modifier is held and restored when released. Known conflicts are auto-enabled when root is enabled.", 11, false);
-        suspendHint.setTextColor(themeColor(android.R.attr.textColorSecondary));
-        rootBox.addView(suspendHint, margins(0, 1, 0, 2));
+
         Button chooseService = button("Choose services");
         styleSetupButton(chooseService);
         chooseService.setHeight(dp(36));
         chooseService.setGravity(Gravity.CENTER);
-        chooseService.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(95, 95, 98)));
+        chooseService.setBackgroundTintList(ColorStateList.valueOf(Palette.surface1));
         rootBox.addView(chooseService, matchMargins(0, 0, 0, 0));
         chooseService.getLayoutParams().height = dp(36);
         chooseService.setTranslationY(0);
@@ -400,7 +439,7 @@ public class MainActivity extends Activity {
                         .setMessage("Root or Shizuku access is required to read D-pad and stick directions. Please be aware:\n\n"
                                 + "• These controls are available for Brighter and Dimmer mappings only; they cannot be used as the modifier.\n"
                                 + "• Privileged input reading does not guarantee that games will stop receiving the same movement. A game may react at the same time as the brightness change.\n"
-                                + "• Only up and down directions change brightness. Other directions can be recorded but will not adjust it.\n"
+                                + "• Any D-pad or stick direction can be recorded for Brighter and Dimmer in either binding.\n"
                                 + "• The Thor L2/R2 triggers can report both button presses and analogue axes, which may cause unexpected results depending on the mapping.\n\n"
                                 + "Disable this option if it causes conflicts or unwanted input.")
                         .setPositiveButton("Got it", (dialog, which) ->
@@ -424,7 +463,7 @@ public class MainActivity extends Activity {
                 button.setEnabled(true);
                 if (shizukuNeedsPermission) {
                     button.setText("Shizuku permission needed");
-                    button.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(170, 115, 35)));
+                    applyStatus(button, false);
                     ShizukuSupport.requestPermission();
                     new Handler(Looper.getMainLooper()).postDelayed(this::refreshPrivilegeButton, 500);
                     new Handler(Looper.getMainLooper()).postDelayed(this::refreshPrivilegeButton, 1500);
@@ -434,8 +473,7 @@ public class MainActivity extends Activity {
                 button.setText(shizuku ? "Shizuku (ADB) - Enabled"
                         : available ? "Root access - Enabled"
                         : "Privilege access - Needed");
-                button.setBackgroundTintList(ColorStateList.valueOf((available || shizuku)
-                        ? Color.rgb(70, 130, 75) : Color.rgb(170, 115, 35)));
+                applyStatus(button, available || shizuku);
                 if (available || shizuku) autoConfigureVolumeLinkSuspension();
                 // Keep the detected privilege text visible after every check,
                 // including repeated taps on the button.
@@ -451,8 +489,7 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 checkRootButton.setText(shizuku ? "Shizuku (ADB) - Enabled"
                         : root ? "Root access - Enabled" : "Privilege access - Needed");
-                checkRootButton.setBackgroundTintList(ColorStateList.valueOf((root || shizuku)
-                        ? Color.rgb(70, 130, 75) : Color.rgb(170, 115, 35)));
+                applyStatus(checkRootButton, root || shizuku);
                 updateRootStatus(root || shizuku);
             });
         }, "ThorPrivilegeRefresh").start();
@@ -602,9 +639,9 @@ public class MainActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(10), dp(6), dp(10), dp(8));
         GradientDrawable background = new GradientDrawable();
-        background.setColor(Color.argb(28, 190, 165, 235));
-        background.setCornerRadius(dp(10));
-        background.setStroke(dp(1), Color.argb(110, 190, 165, 235));
+        background.setColor(Palette.mantle);
+        background.setCornerRadius(dp(CORNER));
+        background.setStroke(dp(1), Palette.surface1);
         box.setBackground(background);
 
         LinearLayout header = new LinearLayout(this);
@@ -622,7 +659,11 @@ public class MainActivity extends Activity {
             header.addView(remove, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
         }
-        box.addView(header, matchMargins(0, 0, 0, 2));
+        box.addView(header, matchMargins(0, 0, 0, 0));
+        TextView summary = text("", 13, false);
+        summary.setTextColor(Palette.SUBTEXT1);
+        if (second) bindingSummaryB = summary; else bindingSummaryA = summary;
+        box.addView(summary, matchMargins(0, 0, 0, 4));
 
         String modifierPref = second ? Prefs.B_MODIFIER : Prefs.MODIFIER;
         String upPref = second ? Prefs.B_UP_KEY : Prefs.UP_KEY;
@@ -638,6 +679,7 @@ public class MainActivity extends Activity {
         box.addView(second
                 ? targetSelector(Prefs.B_TARGET, Prefs.TARGET_BOTTOM)
                 : targetSelector(Prefs.TARGET, Prefs.TARGET_BOTH), matchMargins(0, 0, 0, 0));
+        updateBindingSummaries();
         return box;
     }
 
@@ -675,12 +717,12 @@ public class MainActivity extends Activity {
             for (int i = 0; i < pills.length; i++) {
                 boolean on = values[i] == selected;
                 GradientDrawable shape = new GradientDrawable();
-                shape.setCornerRadius(dp(16));
-                shape.setColor(on ? Color.rgb(190, 165, 235) : Color.argb(30, 190, 165, 235));
-                shape.setStroke(dp(1), Color.argb(on ? 0 : 110, 190, 165, 235));
+                shape.setCornerRadius(dp(CORNER));
+                shape.setColor(on ? Palette.MAUVE : Palette.surface0);
+                shape.setStroke(dp(1), (on ? Palette.MAUVE : Palette.surface1));
                 pills[i].setBackground(shape);
-                pills[i].setTextColor(on ? Color.rgb(35, 25, 50)
-                        : themeColor(android.R.attr.textColorPrimary));
+                pills[i].setTextColor(on ? Palette.onAccent()
+                        : Palette.TEXT);
             }
         };
         for (int i = 0; i < values.length; i++) {
@@ -693,6 +735,7 @@ public class MainActivity extends Activity {
             pill.setOnClickListener(v -> {
                 prefs.edit().putInt(preference, value).apply();
                 refresh[0].run();
+                updateBindingSummaries();
             });
             pills[i] = pill;
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(32), 1f);
@@ -704,8 +747,147 @@ public class MainActivity extends Activity {
     }
 
     private void addBehaviourControls(LinearLayout behaviour) {
-        behaviour.addView(section("General"));
-        CheckBox consume = new CheckBox(this);
+
+        behaviour.addView(section("Brightness"), margins(0, 4, 0, 0));
+        stepLabel = valueText();
+        behaviour.addView(valueRow("Step per press", stepLabel), matchMargins(0, 0, 0, 0));
+        SeekBar step = new SeekBar(this);
+        step.setMax(24);
+        int savedPress = prefs.getInt(Prefs.PRESS_STEP, prefs.getInt(Prefs.STEP, 5));
+        step.setProgress(savedPress - 1);
+        updateStepLabel(savedPress);
+        behaviour.addView(step, matchMargins(0, 0, 0, 2));
+
+        Switch linkHold = new Switch(this);
+        linkHold.setText("Same step while holding");
+        linkHold.setTextSize(13);
+        linkHold.setChecked(prefs.getBoolean(Prefs.LINK_HOLD_STEP, true));
+        behaviour.addView(linkHold, matchMargins(0, 0, 0, 0));
+        TextView holdLabel = valueText();
+        LinearLayout holdRow = valueRow("Step per repeat", holdLabel);
+        behaviour.addView(holdRow, matchMargins(0, 2, 0, 0));
+        SeekBar hold = new SeekBar(this);
+        hold.setMax(24);
+        int savedHold = prefs.getInt(Prefs.HOLD_STEP, savedPress);
+        hold.setProgress(savedHold - 1);
+        holdLabel.setText(savedHold + "%");
+        boolean linked = linkHold.isChecked();
+        hold.setEnabled(!linked);
+        holdRow.setAlpha(linked ? 0.45f : 1f);
+        hold.setAlpha(linked ? 0.45f : 1f);
+        hold.setOnSeekBarChangeListener(new SimpleSeekListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                int percent = value + 1;
+                holdLabel.setText(percent + "%");
+                if (fromUser) prefs.edit().putInt(Prefs.HOLD_STEP, percent).apply();
+            }
+        });
+        behaviour.addView(hold, matchMargins(0, 0, 0, 2));
+        step.setOnSeekBarChangeListener(new SimpleSeekListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                int percent = value + 1;
+                updateStepLabel(percent);
+                if (fromUser) {
+                    SharedPreferences.Editor edit = prefs.edit().putInt(Prefs.PRESS_STEP, percent).putInt(Prefs.STEP, percent);
+                    if (prefs.getBoolean(Prefs.LINK_HOLD_STEP, true)) {
+                        edit.putInt(Prefs.HOLD_STEP, percent);
+                        hold.setProgress(value);
+                    }
+                    edit.apply();
+                }
+            }
+        });
+        linkHold.setOnCheckedChangeListener((button, checked) -> {
+            prefs.edit().putBoolean(Prefs.LINK_HOLD_STEP, checked)
+                    .putInt(Prefs.HOLD_STEP, checked ? prefs.getInt(Prefs.PRESS_STEP, savedPress) : prefs.getInt(Prefs.HOLD_STEP, savedHold)).apply();
+            hold.setEnabled(!checked);
+            holdRow.setAlpha(checked ? 0.45f : 1f);
+            hold.setAlpha(checked ? 0.45f : 1f);
+            if (checked) {
+                int value = prefs.getInt(Prefs.PRESS_STEP, savedPress);
+                hold.setProgress(value - 1);
+                holdLabel.setText(value + "%");
+            }
+        });
+
+        repeatLabel = valueText();
+        behaviour.addView(valueRow("Repeat speed", repeatLabel), matchMargins(0, 2, 0, 0));
+        SeekBar repeat = new SeekBar(this);
+        repeat.setMax(18);
+        int savedDelay = prefs.getInt(Prefs.REPEAT_DELAY, 150);
+        repeat.setProgress(Math.max(0, Math.min(18, (savedDelay - 100) / 50)));
+        updateRepeatLabel(100 + repeat.getProgress() * 50);
+        repeat.setOnSeekBarChangeListener(new SimpleSeekListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                int delay = 100 + value * 50;
+                updateRepeatLabel(delay);
+                if (fromUser) prefs.edit().putInt(Prefs.REPEAT_DELAY, delay).apply();
+            }
+        });
+        behaviour.addView(repeat, matchMargins(0, 0, 0, 4));
+
+        // Sleep/Wake: one row, toggle + "›" for its settings.
+        behaviour.addView(headerWithInfo("Sleep / Wake", "Sleep / Wake brightness",
+                "When the Thor sleeps or the lid closes, both screens' brightness is saved. "
+                + "On wake they are held dark briefly, then faded back up to the saved levels "
+                + "instead of snapping on.\n\nLong-close reset (optional) wakes at a default "
+                + "brightness if the Thor stayed closed longer than a time you choose."),
+                matchMargins(0, 4, 0, 0));
+        LinearLayout wakeRow = new LinearLayout(this);
+        wakeRow.setGravity(Gravity.CENTER_VERTICAL);
+        Switch gentleWake = new Switch(this);
+        gentleWake.setText("Fade in on wake");
+        gentleWake.setTextSize(14);
+        gentleWake.setChecked(prefs.getBoolean(Prefs.GENTLE_WAKE, false));
+        gentleWake.setOnCheckedChangeListener((button, checked) -> {
+            if (wakeSettingsButton != null) {
+                wakeSettingsButton.setVisibility(checked ? View.VISIBLE : View.GONE);
+            }
+            if (suppressGentleWakeListener) return;
+            if (checked && !requiredPermissionsReady()) {
+                suppressGentleWakeListener = true;
+                gentleWake.setChecked(false);
+                suppressGentleWakeListener = false;
+                Toast.makeText(this, "Set up permissions before enabling Sleep/Wake brightness.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            // Just switch it on/off; timings are changed from "Fade settings".
+            prefs.edit().putBoolean(Prefs.GENTLE_WAKE, checked).apply();
+        });
+        wakeRow.addView(gentleWake, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        behaviour.addView(wakeRow, matchMargins(0, 0, 0, 0));
+        // Small "Settings" pill under the toggle, only while the fade is on.
+        Button configureWake = button("Fade settings");
+        configureWake.setTextSize(13);
+        configureWake.setTextColor(Palette.MAUVE);
+        configureWake.setPadding(dp(12), dp(4), dp(12), dp(4));
+        configureWake.setBackgroundTintList(ColorStateList.valueOf(Palette.surface0));
+        configureWake.setOnClickListener(v -> {
+            if (!requiredPermissionsReady()) {
+                Toast.makeText(this, "Set up permissions before configuring Sleep/Wake brightness.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            showGentleWakeSettings(gentleWake);
+        });
+        configureWake.setVisibility(gentleWake.isChecked() ? View.VISIBLE : View.GONE);
+        LinearLayout.LayoutParams pill = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(32));
+        pill.setMargins(0, dp(2), 0, dp(6));
+        behaviour.addView(configureWake, pill);
+        wakeSettingsButton = configureWake;
+
+    }
+
+    /** Reserve-modifier option; applies to every binding. */
+    private void addReserveControls(LinearLayout parent) {
+        View divider = new View(this);
+        divider.setBackgroundColor(Palette.surface0);
+        LinearLayout.LayoutParams line = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+        line.setMargins(0, dp(10), 0, dp(6));
+        parent.addView(divider, line);
+        Switch consume = new Switch(this);
         consume.setText("Reserve modifier buttons");
         consume.setTextSize(14);
         consume.setChecked(prefs.getBoolean(Prefs.CONSUME_MODIFIER, false));
@@ -725,126 +907,86 @@ public class MainActivity extends Activity {
                     .setOnCancelListener(dialog -> consume.setChecked(false))
                     .show();
         });
-        behaviour.addView(consume, matchMargins(0, 0, 0, 0));
+        parent.addView(consume, matchMargins(0, 0, 0, 0));
         TextView consumeHint = text("Applies to all bindings. Brighter and Dimmer are always "
                 + "reserved while a modifier is held.", 11, false);
-        consumeHint.setTextColor(themeColor(android.R.attr.textColorSecondary));
-        behaviour.addView(consumeHint, margins(0, 0, 0, 6));
+        consumeHint.setTextColor(Palette.SUBTEXT0);
+        parent.addView(consumeHint, margins(0, 0, 0, 6));
+    }
 
-        behaviour.addView(section("Brightness step"));
-        stepLabel = text("", 15, true);
-        behaviour.addView(stepLabel);
-        SeekBar step = new SeekBar(this);
-        step.setMax(24);
-        int savedPress = prefs.getInt(Prefs.PRESS_STEP, prefs.getInt(Prefs.STEP, 5));
-        step.setProgress(savedPress - 1);
-        updateStepLabel(savedPress);
-        step.setOnSeekBarChangeListener(new SimpleSeekListener() {
-            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
-                int percent = value + 1;
-                updateStepLabel(percent);
-                if (fromUser) {
-                    SharedPreferences.Editor edit = prefs.edit().putInt(Prefs.PRESS_STEP, percent).putInt(Prefs.STEP, percent);
-                    if (prefs.getBoolean(Prefs.LINK_HOLD_STEP, true)) edit.putInt(Prefs.HOLD_STEP, percent);
-                    edit.apply();
-                }
-            }
-        });
-        behaviour.addView(step);
+    /** Live Top/Bottom brightness, refreshed while the app is in front. */
+    private void addLevelBars(LinearLayout parent) {
+        parent.addView(section("Current brightness"), margins(0, 14, 0, 4));
+        topLevelText = valueText();
+        bottomLevelText = valueText();
+        topLevelBar = levelBar();
+        bottomLevelBar = levelBar();
+        parent.addView(levelRow("Top", topLevelBar, topLevelText), matchMargins(0, 2, 0, 6));
+        parent.addView(levelRow("Bottom", bottomLevelBar, bottomLevelText), matchMargins(0, 0, 0, 0));
+        refreshLevelBars();
+    }
 
-        Switch linkHold = new Switch(this);
-        linkHold.setText("Link hold step to press step");
-        linkHold.setTextSize(12);
-        linkHold.setChecked(prefs.getBoolean(Prefs.LINK_HOLD_STEP, true));
-        behaviour.addView(linkHold, margins(0, 0, 0, 0));
-        TextView holdLabel = text("Hold: " + prefs.getInt(Prefs.HOLD_STEP, savedPress) + "% per repeat", 13, true);
-        behaviour.addView(holdLabel);
-        SeekBar hold = new SeekBar(this);
-        hold.setMax(24);
-        int savedHold = prefs.getInt(Prefs.HOLD_STEP, savedPress);
-        hold.setProgress(savedHold - 1);
-        hold.setEnabled(!linkHold.isChecked());
-        hold.setOnSeekBarChangeListener(new SimpleSeekListener() {
-            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
-                int percent = value + 1;
-                holdLabel.setText("Hold: " + percent + "% per repeat");
-                if (fromUser) prefs.edit().putInt(Prefs.HOLD_STEP, percent).apply();
-            }
-        });
-        behaviour.addView(hold);
-        linkHold.setOnCheckedChangeListener((button, checked) -> {
-            prefs.edit().putBoolean(Prefs.LINK_HOLD_STEP, checked)
-                    .putInt(Prefs.HOLD_STEP, checked ? prefs.getInt(Prefs.PRESS_STEP, savedPress) : prefs.getInt(Prefs.HOLD_STEP, savedHold)).apply();
-            hold.setEnabled(!checked);
-            if (checked) {
-                int value = prefs.getInt(Prefs.PRESS_STEP, savedPress);
-                hold.setProgress(value - 1);
-                holdLabel.setText("Hold: " + value + "% per repeat");
-            }
-        });
+    private TextView valueText() {
+        TextView value = text("", 15, true);
+        value.setTextColor(Palette.MAUVE);
+        return value;
+    }
 
-        behaviour.addView(section("Hold repeat speed"), margins(0, 2, 0, 0));
-        repeatLabel = text("", 15, true);
-        behaviour.addView(repeatLabel);
-        SeekBar repeat = new SeekBar(this);
-        repeat.setMax(18);
-        int savedDelay = prefs.getInt(Prefs.REPEAT_DELAY, 150);
-        repeat.setProgress(Math.max(0, Math.min(18, (savedDelay - 100) / 50)));
-        updateRepeatLabel(100 + repeat.getProgress() * 50);
-        repeat.setOnSeekBarChangeListener(new SimpleSeekListener() {
-            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
-                int delay = 100 + value * 50;
-                updateRepeatLabel(delay);
-                if (fromUser) prefs.edit().putInt(Prefs.REPEAT_DELAY, delay).apply();
-            }
-        });
-        behaviour.addView(repeat);
+    /** "Label ........ value" on one line. */
+    private LinearLayout valueRow(String label, TextView value) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(text(label, 14, false), new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(value);
+        return row;
+    }
 
-        LinearLayout gentleBox = new LinearLayout(this);
-        gentleBox.setOrientation(LinearLayout.VERTICAL);
-        gentleBox.setPadding(dp(8), dp(6), dp(8), dp(6));
-        GradientDrawable gentleBackground = new GradientDrawable();
-        gentleBackground.setColor(Color.argb(45, 190, 165, 235));
-        gentleBackground.setCornerRadius(dp(8));
-        gentleBackground.setStroke(dp(1), Color.argb(90, 190, 165, 235));
-        gentleBox.setBackground(gentleBackground);
-        behaviour.addView(gentleBox, matchMargins(0, 20, 0, 0));
-        TextView gentleTitle = text("Sleep/Wake brightness", 14, true);
-        gentleTitle.setTextColor(Color.rgb(190, 165, 235));
-        gentleBox.addView(gentleTitle, margins(0, 0, 0, 0));
-        Switch gentleWake = new Switch(this);
-        gentleWake.setText("Enable sleep/wake brightness");
-        gentleWake.setTextSize(12);
-        gentleWake.setTextColor(Color.WHITE);
-        gentleWake.setChecked(prefs.getBoolean(Prefs.GENTLE_WAKE, false));
-        gentleWake.setOnCheckedChangeListener((button, checked) -> {
-            if (suppressGentleWakeListener) return;
-            if (checked && !requiredPermissionsReady()) {
-                suppressGentleWakeListener = true;
-                gentleWake.setChecked(false);
-                suppressGentleWakeListener = false;
-                Toast.makeText(this, "Set up permissions before enabling Sleep/Wake brightness.", Toast.LENGTH_LONG).show();
-                return;
-            }
-            if (checked) showGentleWakeSettings(gentleWake);
-            else prefs.edit().putBoolean(Prefs.GENTLE_WAKE, false).apply();
-        });
-        gentleBox.addView(gentleWake, matchMargins(0, 0, 0, 0));
-        Button configureWake = new Button(this);
-        configureWake.setText("Configure");
-        configureWake.setAllCaps(false);
-        configureWake.setOnClickListener(v -> {
-            if (!requiredPermissionsReady()) {
-                Toast.makeText(this, "Set up permissions before configuring Sleep/Wake brightness.", Toast.LENGTH_LONG).show();
-                return;
-            }
-            showGentleWakeSettings(gentleWake);
-        });
-        gentleBox.addView(configureWake, matchMargins(0, 0, 0, 0));
-        TextView gentleHint = text("Configure the black hold, ramp, and long-close reset.", 10, false);
-        gentleHint.setTextColor(themeColor(android.R.attr.textColorSecondary));
-        gentleBox.addView(gentleHint, margins(0, 0, 0, 0));
+    private android.widget.ProgressBar levelBar() {
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null,
+                android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        bar.setProgressTintList(ColorStateList.valueOf(Palette.YELLOW));
+        bar.setProgressBackgroundTintList(ColorStateList.valueOf(Palette.surface1));
+        return bar;
+    }
 
+    private LinearLayout levelRow(String label, android.widget.ProgressBar bar, TextView value) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name = text(label, 13, false);
+        name.setTextColor(Palette.SUBTEXT0);
+        row.addView(name, new LinearLayout.LayoutParams(dp(58), ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.addView(bar, new LinearLayout.LayoutParams(0, dp(10), 1f));
+        value.setGravity(Gravity.END);
+        row.addView(value, new LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.WRAP_CONTENT));
+        return row;
+    }
+
+    /** Reads both panels' current brightness (top: 0-255, bottom: 0-100). */
+    private void refreshLevelBars() {
+        if (topLevelBar == null) return;
+        int top;
+        try {
+            top = Math.round(Settings.System.getInt(getContentResolver(),
+                    Settings.System.SCREEN_BRIGHTNESS) * 100f / 255f);
+        } catch (Settings.SettingNotFoundException e) {
+            top = -1;
+        }
+        int bottom;
+        try {
+            bottom = Settings.System.getInt(getContentResolver(), "dual_screen_brightness_level");
+        } catch (Settings.SettingNotFoundException e) {
+            try {
+                bottom = Settings.Secure.getInt(getContentResolver(), "dual_screen_brightness_level");
+            } catch (Settings.SettingNotFoundException ignored) {
+                bottom = -1;
+            }
+        }
+        topLevelBar.setProgress(Math.max(0, top));
+        bottomLevelBar.setProgress(Math.max(0, bottom));
+        topLevelText.setText(top < 0 ? "\u2014" : top + "%");
+        bottomLevelText.setText(bottom < 0 ? "\u2014" : bottom + "%");
     }
 
     private void addMappingRow(LinearLayout parent, String title, String preference,
@@ -854,9 +996,9 @@ public class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setMinimumHeight(dp(46));
         GradientDrawable rowBackground = new GradientDrawable();
-        rowBackground.setColor(Color.argb(45, 190, 165, 235));
-        rowBackground.setCornerRadius(dp(8));
-        rowBackground.setStroke(dp(1), Color.argb(90, 190, 165, 235));
+        rowBackground.setColor(Palette.surface0);
+        rowBackground.setCornerRadius(dp(CORNER));
+        rowBackground.setStroke(dp(1), Palette.surface1);
         row.setBackground(rowBackground);
         row.setPadding(dp(8), dp(1), dp(8), dp(1));
         TextView label = text("", 14, true);
@@ -899,124 +1041,119 @@ public class MainActivity extends Activity {
         boolean inferred = root || shizuku;
         button.setText(shizuku ? "Shizuku (ADB) - Enabled"
                 : root ? "Root access - Enabled" : "Check privilege access");
-        button.setBackgroundTintList(ColorStateList.valueOf(inferred
-                ? Color.rgb(70, 130, 75) : Color.rgb(95, 95, 98)));
+        applyStatus(button, inferred);
     }
 
+    /**
+     * Fade timings and the long-close reset, laid out in two columns so the
+     * whole popup fits the Thor's top screen.
+     */
     private void showGentleWakeSettings(Switch gentleWake) {
-        boolean wasEnabled = gentleWake.isChecked();
-        int saved = Math.max(100, Math.min(10000,
-                prefs.getInt(Prefs.GENTLE_WAKE_DURATION, 5000)));
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(24), dp(4), dp(24), 0);
-        TextView description = text("After the Thor wakes, both screens briefly stay dark, then ramp back to the brightness levels saved before closing or putting the Thor to sleep. The optional long-close reset can set a default brightness after a chosen amount of time.", 14, false);
-        content.addView(description, matchMargins(0, 0, 0, 4));
-        TextView value = text("Transition: " + formatWakeDuration(saved), 15, true);
-        content.addView(value, matchMargins(0, 0, 0, 0));
-        content.addView(text("How long the brightness takes to rise after the black hold.", 12, false), matchMargins(0, 0, 0, 2));
-        SeekBar slider = new SeekBar(this);
-        slider.setMax(99);
-        slider.setProgress((saved / 100) - 1);
-        slider.setOnSeekBarChangeListener(new SimpleSeekListener() {
-            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                value.setText("Transition: " + formatWakeDuration((progress + 1) * 100));
-            }
-        });
-        content.addView(slider, matchMargins(0, 0, 0, 0));
+        int duration = Math.max(100, Math.min(10000, prefs.getInt(Prefs.GENTLE_WAKE_DURATION, 5000)));
         int holdMs = Math.max(100, Math.min(5000, prefs.getInt(Prefs.WAKE_HOLD_DURATION, 1000)));
-        TextView holdValue = text("Black hold: " + formatWakeDuration(holdMs), 15, true);
-        content.addView(holdValue, matchMargins(0, 6, 0, 0));
-        content.addView(text("Keeps both screens dark after wake before the ramp starts.", 12, false), matchMargins(0, 0, 0, 2));
-        SeekBar holdSlider = new SeekBar(this);
-        holdSlider.setMax(49);
-        holdSlider.setProgress((holdMs / 100) - 1);
-        holdSlider.setOnSeekBarChangeListener(new SimpleSeekListener() {
-            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                holdValue.setText("Black hold: " + formatWakeDuration((progress + 1) * 100));
-            }
-        });
-        content.addView(holdSlider, matchMargins(0, 0, 0, 0));
-        // Present controls in the order the wake sequence actually occurs.
-        View transitionLabel = content.getChildAt(1);
-        View transitionHelp = content.getChildAt(2);
-        View transitionSlider = content.getChildAt(3);
-        View holdHelp = content.getChildAt(5);
-        content.removeViews(1, 6);
-        content.addView(holdValue);
-        content.addView(holdHelp);
-        content.addView(holdSlider);
-        content.addView(transitionLabel);
-        content.addView(transitionHelp);
-        content.addView(transitionSlider);
         int resetMinutes = Math.max(0, Math.min(1440,
                 (int) (prefs.getLong(Prefs.WAKE_RESET_TIMEOUT, 120L * 60L * 1000L) / 60000L)));
+        int resetLevelSaved = prefs.getInt(Prefs.WAKE_RESET_BRIGHTNESS, 128);
+
+        // Left: the fade itself.
+        LinearLayout fade = settingBox();
+        fade.setPadding(dp(14), dp(10), dp(14), dp(10));
+        fade.addView(section("Wake fade"), matchMargins(0, 0, 0, 4));
+        TextView holdValue = valueText();
+        fade.addView(valueRow("Stay dark for", holdValue), matchMargins(0, 0, 0, 0));
+        SeekBar holdSlider = new SeekBar(this);
+        holdSlider.setMax(49);
+        holdSlider.setOnSeekBarChangeListener(new SimpleSeekListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                holdValue.setText(formatWakeDuration((progress + 1) * 100));
+            }
+        });
+        holdSlider.setProgress((holdMs / 100) - 1);
+        holdValue.setText(formatWakeDuration(holdMs));
+        fade.addView(holdSlider, matchMargins(0, 0, 0, 8));
+        TextView fadeValue = valueText();
+        fade.addView(valueRow("Then fade up over", fadeValue), matchMargins(0, 0, 0, 0));
+        SeekBar fadeSlider = new SeekBar(this);
+        fadeSlider.setMax(99);
+        fadeSlider.setOnSeekBarChangeListener(new SimpleSeekListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                fadeValue.setText(formatWakeDuration((progress + 1) * 100));
+            }
+        });
+        fadeSlider.setProgress((duration / 100) - 1);
+        fadeValue.setText(formatWakeDuration(duration));
+        fade.addView(fadeSlider, matchMargins(0, 0, 0, 0));
+
+        // Right: optional reset after a long close.
+        LinearLayout reset = settingBox();
+        reset.setPadding(dp(14), dp(10), dp(14), dp(10));
+        reset.addView(section("Long-close reset"), matchMargins(0, 0, 0, 2));
         Switch resetEnabled = new Switch(this);
-        resetEnabled.setText("Reset after long close");
+        resetEnabled.setText("Reset if closed for a while");
         resetEnabled.setTextSize(14);
         resetEnabled.setChecked(prefs.getBoolean(Prefs.WAKE_RESET_ENABLED, false));
-        content.addView(resetEnabled, matchMargins(0, 8, 0, 0));
-        TextView resetValue = text("Long-close reset: after " + formatLongClose(resetMinutes), 15, true);
-        content.addView(resetValue, matchMargins(0, 6, 0, 0));
-        TextView resetHelp = text("After this time closed, use the reset brightness instead of saved levels.", 12, false);
-        content.addView(resetHelp, matchMargins(0, 0, 0, 2));
+        reset.addView(resetEnabled, matchMargins(0, 0, 0, 4));
+        LinearLayout resetOptions = new LinearLayout(this);
+        resetOptions.setOrientation(LinearLayout.VERTICAL);
+        TextView afterValue = valueText();
+        resetOptions.addView(valueRow("After", afterValue), matchMargins(0, 0, 0, 0));
         SeekBar resetTime = new SeekBar(this);
         resetTime.setMax(152);
-        resetTime.setProgress(longCloseProgress(resetMinutes));
         resetTime.setOnSeekBarChangeListener(new SimpleSeekListener() {
             @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                resetValue.setText("Long-close reset: after " + formatLongClose(longCloseMinutes(progress)));
+                afterValue.setText(formatLongClose(longCloseMinutes(progress)));
             }
         });
-        content.addView(resetTime, matchMargins(0, 0, 0, 0));
-        TextView resetBrightness = text("Reset brightness: 50%", 15, true);
-        content.addView(resetBrightness, matchMargins(0, 4, 0, 0));
-        TextView resetBrightnessHelp = text("Starting level used after a long close.", 12, false);
-        content.addView(resetBrightnessHelp, matchMargins(0, 0, 0, 2));
+        resetTime.setProgress(longCloseProgress(resetMinutes));
+        afterValue.setText(formatLongClose(resetMinutes));
+        resetOptions.addView(resetTime, matchMargins(0, 0, 0, 8));
+        TextView levelValue = valueText();
+        resetOptions.addView(valueRow("Reset to", levelValue), matchMargins(0, 0, 0, 0));
         SeekBar resetLevel = new SeekBar(this);
         resetLevel.setMax(254);
-        resetLevel.setProgress(prefs.getInt(Prefs.WAKE_RESET_BRIGHTNESS, 128) - 1);
         resetLevel.setOnSeekBarChangeListener(new SimpleSeekListener() {
             @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                resetBrightness.setText("Reset brightness: " + Math.round((progress + 1) * 100f / 255f) + "%");
+                levelValue.setText(Math.round((progress + 1) * 100f / 255f) + "%");
             }
         });
-        content.addView(resetLevel, matchMargins(0, 0, 0, 0));
-        LinearLayout holdBox = settingBox();
-        moveIntoBox(content, holdBox, holdValue, holdHelp, holdSlider);
-        LinearLayout transitionBox = settingBox();
-        moveIntoBox(content, transitionBox, transitionLabel, transitionHelp, transitionSlider);
-        LinearLayout resetBox = settingBox();
-        moveIntoBox(content, resetBox, resetEnabled, resetValue, resetHelp, resetTime,
-                resetBrightness, resetBrightnessHelp, resetLevel);
-        LinearLayout wakeBox = settingBox();
-        while (holdBox.getChildCount() > 0) {
-            View child = holdBox.getChildAt(0);
-            holdBox.removeViewAt(0);
-            wakeBox.addView(child);
-        }
-        while (transitionBox.getChildCount() > 0) {
-            View child = transitionBox.getChildAt(0);
-            transitionBox.removeViewAt(0);
-            wakeBox.addView(child);
-        }
-        wakeBox.setPadding(dp(8), dp(8), dp(8), dp(8));
-        content.addView(wakeBox, 1);
-        content.addView(resetBox, matchMargins(0, 8, 0, 0));
+        resetLevel.setProgress(resetLevelSaved - 1);
+        levelValue.setText(Math.round(resetLevelSaved * 100f / 255f) + "%");
+        resetOptions.addView(resetLevel, matchMargins(0, 0, 0, 0));
+        resetOptions.setAlpha(resetEnabled.isChecked() ? 1f : 0.4f);
+        resetTime.setEnabled(resetEnabled.isChecked());
+        resetLevel.setEnabled(resetEnabled.isChecked());
+        resetEnabled.setOnCheckedChangeListener((button, checked) -> {
+            resetOptions.setAlpha(checked ? 1f : 0.4f);
+            resetTime.setEnabled(checked);
+            resetLevel.setEnabled(checked);
+        });
+        reset.addView(resetOptions, matchMargins(0, 0, 0, 0));
+
+        LinearLayout columns = new LinearLayout(this);
+        columns.setOrientation(LinearLayout.HORIZONTAL);
+        columns.setPadding(dp(20), dp(4), dp(20), 0);
+        LinearLayout.LayoutParams left = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        left.setMargins(0, 0, dp(8), 0);
+        LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        right.setMargins(dp(8), 0, 0, 0);
+        columns.addView(fade, left);
+        columns.addView(reset, right);
+        polish(columns);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(columns);
+
         AlertDialog wakeDialog = new AlertDialog.Builder(this)
-                .setCustomTitle(centeredDialogTitle("Sleep/wake brightness"))
-                .setView(content)
-                .setPositiveButton("Enable", (dialog, which) -> {
-                    suppressGentleWakeListener = true;
-                    gentleWake.setChecked(true);
-                    suppressGentleWakeListener = false;
-                    saveGentleWake((slider.getProgress() + 1) * 100,
-                            (holdSlider.getProgress() + 1) * 100,
-                            longCloseMinutes(resetTime.getProgress()) * 60000L, resetLevel.getProgress() + 1,
-                            resetEnabled.isChecked());
-                })
-                .setNegativeButton("Cancel", (dialog, which) -> gentleWake.setChecked(wasEnabled))
-                .setOnCancelListener(dialog -> gentleWake.setChecked(wasEnabled))
+                .setCustomTitle(centeredDialogTitle("Fade settings"))
+                .setView(scroll)
+                .setPositiveButton("Save", (dialog, which) -> saveGentleWake(
+                        (fadeSlider.getProgress() + 1) * 100,
+                        (holdSlider.getProgress() + 1) * 100,
+                        longCloseMinutes(resetTime.getProgress()) * 60000L,
+                        resetLevel.getProgress() + 1,
+                        resetEnabled.isChecked()))
+                .setNegativeButton("Cancel", null)
                 .create();
         wakeDialog.setOnShowListener(d -> wakeDialog.getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
@@ -1024,14 +1161,9 @@ public class MainActivity extends Activity {
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE));
         wakeDialog.show();
         if (wakeDialog.getWindow() != null) {
-            GradientDrawable dialogBackground = new GradientDrawable();
-            dialogBackground.setColor(themeColor(android.R.attr.colorBackground));
-            dialogBackground.setCornerRadius(dp(14));
-            wakeDialog.getWindow().setBackgroundDrawable(dialogBackground);
-            wakeDialog.getWindow().setLayout((int) (getResources().getDisplayMetrics().widthPixels * 0.96f),
+            wakeDialog.getWindow().setLayout((int) (getResources().getDisplayMetrics().widthPixels * 0.82f),
                     ViewGroup.LayoutParams.WRAP_CONTENT);
         }
-        wakeDialog.getButton(AlertDialog.BUTTON_POSITIVE).setText(wasEnabled ? "Save" : "Enable");
     }
 
     private String formatWakeDuration(int durationMs) {
@@ -1058,9 +1190,9 @@ public class MainActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(8), dp(4), dp(8), dp(4));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(35, 190, 165, 235));
-        bg.setCornerRadius(dp(8));
-        bg.setStroke(dp(1), Color.argb(90, 190, 165, 235));
+        bg.setColor(Palette.surface0);
+        bg.setCornerRadius(dp(CORNER));
+        bg.setStroke(dp(1), Palette.surface1);
         box.setBackground(bg);
         return box;
     }
@@ -1086,28 +1218,75 @@ public class MainActivity extends Activity {
         return Settings.System.canWrite(this) && isAccessibilityServiceEnabled();
     }
 
+    /** One subtle corner radius (dp) for every card, button, pill and ring. */
+    private static final int CORNER = 6;
+
+    private View recordDetails;
+
     private void showRecordPrompt(String preference, TextView label, String title,
                                    boolean allowsVolume) {
         boolean rootDirection = prefs.getBoolean(Prefs.ROOT_AXES, false)
                 && Prefs.isDirectional(preference);
-        String message = Prefs.isModifier(preference)
-                ? "Waiting for input...\n\nPress the controller button you want to use for the Modifier button."
-                : rootDirection
-                ? "Waiting for input...\n\nMove the D-pad or stick direction for " + title + "."
-                : "Waiting for input...\n\nPress the controller button you want to use for "
-                + (Prefs.UP_KEY.equals(preference) || Prefs.B_UP_KEY.equals(preference)
-                ? "turning the brightness up." : "turning the brightness down.");
-        recordDialogMessage = text(message + "\n\n10 seconds", 16, false);
+        String prompt = rootDirection ? "Move the D-pad or a stick" : "Press a button";
+        String forWhat = Prefs.isModifier(preference) ? "to use as the modifier"
+                : Prefs.UP_KEY.equals(preference) || Prefs.B_UP_KEY.equals(preference)
+                ? "to make the screen brighter" : "to make the screen dimmer";
+
         recordDialogCompleted = false;
+        recordDialogMessage = text(prompt, 22, true);
+        recordDialogMessage.setTextColor(Palette.TEXT);
         recordDialogMessage.setGravity(Gravity.CENTER);
-        recordDialogMessage.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        recordDialogMessage.setMinHeight(dp(150));
-        recordDialogMessage.setPadding(dp(16), dp(18), dp(16), dp(18));
+        TextView sub = text(forWhat, 15, false);
+        sub.setTextColor(Palette.SUBTEXT1);
+        sub.setGravity(Gravity.CENTER);
+        TextView hint = text(Prefs.isModifier(preference)
+                ? "Face, shoulder, stick-click, Start or Select"
+                : "Volume, face, shoulder, stick-click, Start or Select"
+                + (prefs.getBoolean(Prefs.ROOT_AXES, false) ? ", D-pad or stick" : ""), 13, false);
+        hint.setTextColor(Palette.SUBTEXT0);
+        hint.setGravity(Gravity.CENTER);
+
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null,
+                android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(10000);
+        bar.setProgress(10000);
+        bar.setProgressTintList(ColorStateList.valueOf(Palette.MAUVE));
+        bar.setProgressBackgroundTintList(ColorStateList.valueOf(Palette.surface1));
+        TextView seconds = text("10s", 13, true);
+        seconds.setTextColor(Palette.SUBTEXT0);
+        LinearLayout timer = new LinearLayout(this);
+        timer.setGravity(Gravity.CENTER_VERTICAL);
+        timer.addView(bar, new LinearLayout.LayoutParams(0, dp(6), 1f));
+        timer.addView(seconds, margins(12, 0, 0, 0));
+
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        details.addView(sub, matchMargins(0, 4, 0, 14));
+        details.addView(timer, matchMargins(0, 0, 0, 10));
+        details.addView(hint, matchMargins(0, 0, 0, 0));
+        recordDetails = details;
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(dp(28), dp(4), dp(28), dp(8));
+        body.addView(recordDialogMessage, matchMargins(0, 0, 0, 0));
+        body.addView(details, matchMargins(0, 0, 0, 0));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(body);
+
         recordDialog = new AlertDialog.Builder(this)
-                .setTitle("Record " + title)
-                .setView(recordDialogMessage)
+                .setCustomTitle(centeredDialogTitle("Record " + title))
+                .setView(scroll)
+                .setNegativeButton("Cancel", (dialog, which) -> {
+                    if (capturing) endCapture(false, 0);
+                })
                 .create();
-        recordDialog.setCancelable(false);
+        // Back, tapping outside, or Cancel all abandon the recording.
+        recordDialog.setCancelable(true);
+        recordDialog.setCanceledOnTouchOutside(true);
+        recordDialog.setOnCancelListener(dialog -> {
+            if (capturing) endCapture(false, 0);
+        });
         recordDialog.setOnKeyListener((dialog, keyCode, keyEvent) -> {
             if (recordDialogCompleted) return true;
             if (keyEvent.getAction() == KeyEvent.ACTION_DOWN
@@ -1118,22 +1297,31 @@ public class MainActivity extends Activity {
             }
             return false;
         });
-        recordDialog.setOnShowListener(dialog ->
-                beginCapture(preference, label, title, allowsVolume));
+        recordDialog.setOnShowListener(dialog -> {
+            if (recordDialog.getWindow() != null) {
+                recordDialog.getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+            }
+            beginCapture(preference, label, title, allowsVolume);
+        });
         recordDialog.show();
         if (recordDialog.getWindow() != null) {
-            recordDialog.getWindow().setLayout(dp(650), ViewGroup.LayoutParams.WRAP_CONTENT);
+            int width = Math.min(dp(520), (int) (getResources().getDisplayMetrics().widthPixels * 0.6f));
+            recordDialog.getWindow().setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
         }
         final long deadline = System.currentTimeMillis() + 10000;
         recordCountdown = new Runnable() {
             @Override public void run() {
                 if (!capturing || recordDialog == null || !recordDialog.isShowing()) return;
-                int remaining = (int) Math.ceil((deadline - System.currentTimeMillis()) / 1000.0);
-                if (remaining <= 0) {
+                long left = deadline - System.currentTimeMillis();
+                if (left <= 0) {
                     endCapture(false, 0);
                 } else {
-                    recordDialogMessage.setText(message + "\n\n" + remaining + " seconds");
-                    recordCountdownHandler.postDelayed(this, 250);
+                    bar.setProgress((int) left);
+                    seconds.setText((int) Math.ceil(left / 1000.0) + "s");
+                    recordCountdownHandler.postDelayed(this, 50);
                 }
             }
         };
@@ -1144,15 +1332,18 @@ public class MainActivity extends Activity {
         if (recordDialogMessage == null || recordDialog == null) return;
         if (recordCountdown != null) recordCountdownHandler.removeCallbacks(recordCountdown);
         recordDialogCompleted = true;
+        if (recordDetails != null) recordDetails.setVisibility(View.GONE);
+        Button cancel = recordDialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+        if (cancel != null) cancel.setVisibility(View.INVISIBLE);
         recordDialogMessage.setText(message);
         recordDialogMessage.setTextSize(20);
-        recordDialogMessage.setTypeface(recordDialogMessage.getTypeface(), android.graphics.Typeface.BOLD);
-        recordDialogMessage.setTextColor(Color.rgb(70, 150, 75));
+        recordDialogMessage.setTextColor(Palette.GREEN);
+        recordDialogMessage.setPadding(0, dp(8), 0, dp(8));
         recordDialogMessage.postDelayed(() -> {
             if (recordDialog != null && recordDialog.isShowing()) recordDialog.dismiss();
             recordDialog = null;
             recordDialogMessage = null;
-        }, 2000);
+        }, 1500);
     }
 
     private void beginCapture(String preference, TextView label, String title,
@@ -1295,8 +1486,82 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Short tick when a control is tapped or activated with the controller. */
+    private void haptic(View view) {
+        if (view == null) return;
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK,
+                android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+    }
+
+    /** No click sounds anywhere in the app; haptics replace them. */
+    private void muteClicks(View view) {
+        view.setSoundEffectsEnabled(false);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) muteClicks(group.getChildAt(i));
+        }
+    }
+
+    /** Deepest enabled, clickable view under a screen point. */
+    private View clickableAt(View view, int x, int y) {
+        if (view.getVisibility() != View.VISIBLE) return null;
+        int[] at = new int[2];
+        view.getLocationOnScreen(at);
+        if (x < at[0] || y < at[1] || x >= at[0] + view.getWidth() || y >= at[1] + view.getHeight()) return null;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = group.getChildCount() - 1; i >= 0; i--) {
+                View hit = clickableAt(group.getChildAt(i), x, y);
+                if (hit != null) return hit;
+            }
+        }
+        return view.isEnabled() && (view.isClickable() || view instanceof SeekBar) ? view : null;
+    }
+
+    private View touchDownView;
+    private float touchDownX, touchDownY;
+    private boolean touchMoved;
+
+    /** Buzz only on a real tap: lifted on the same control without scrolling. */
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        float x = event.getRawX(), y = event.getRawY();
+        switch (event.getActionMasked()) {
+            case android.view.MotionEvent.ACTION_DOWN:
+                touchDownView = clickableAt(getWindow().getDecorView(), (int) x, (int) y);
+                touchDownX = x;
+                touchDownY = y;
+                touchMoved = false;
+                break;
+            case android.view.MotionEvent.ACTION_MOVE:
+                int slop = android.view.ViewConfiguration.get(this).getScaledTouchSlop();
+                if (Math.abs(x - touchDownX) > slop || Math.abs(y - touchDownY) > slop) touchMoved = true;
+                break;
+            case android.view.MotionEvent.ACTION_UP:
+                if (!touchMoved && touchDownView != null
+                        && clickableAt(getWindow().getDecorView(), (int) x, (int) y) == touchDownView) {
+                    haptic(touchDownView);
+                }
+                touchDownView = null;
+                break;
+            case android.view.MotionEvent.ACTION_CANCEL:
+                touchDownView = null;
+                break;
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (!capturing && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+            int key = event.getKeyCode();
+            View focused = getCurrentFocus();
+            if ((key == KeyEvent.KEYCODE_BUTTON_A || key == KeyEvent.KEYCODE_DPAD_CENTER
+                    || key == KeyEvent.KEYCODE_ENTER) && focused != null && focused.isEnabled()
+                    && focused.isClickable()) {
+                haptic(focused);
+            }
+        }
         if (!capturing) return super.dispatchKeyEvent(event);
         int code = event.getKeyCode();
         if (event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0) return true;
@@ -1377,7 +1642,7 @@ public class MainActivity extends Activity {
     private void setStaticCaptureMessage() {
         if (captureMessage == null) return;
         captureMessage.setText("Use Volume, face, shoulder, stick-click, Start or Select. With root or Shizuku, Binding 1 can also record D-pad or stick directions.");
-        captureMessage.setTextColor(themeColor(android.R.attr.textColorSecondary));
+        captureMessage.setTextColor(Palette.SUBTEXT0);
     }
 
     private String saveMappingWithSwap(int code) {
@@ -1434,6 +1699,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        levelHandler.removeCallbacks(levelPoller);
+        levelHandler.post(levelPoller);
         if (permissionStatus != null) {
             updatePermissionStatus();
             updateSetupButtons();
@@ -1530,6 +1797,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         if (capturing) endCapture(false, 0);
+        levelHandler.removeCallbacks(levelPoller);
         super.onPause();
     }
 
@@ -1548,29 +1816,30 @@ public class MainActivity extends Activity {
             status = "Key detection needed";
         }
         permissionStatus.setText(status);
-        permissionStatus.setTextColor(write && service ? Color.rgb(24, 110, 50) : Color.rgb(150, 80, 20));
+        permissionStatus.setTextColor(write && service ? Palette.GREEN : Palette.PEACH);
     }
 
     private void updateSetupButtons() {
         boolean write = Settings.System.canWrite(this);
         boolean service = isAccessibilityServiceEnabled();
         updateSetupButton(brightnessPermissionButton, "Set up permissions", write && service);
+        if (setupHint != null) setupHint.setVisibility(write && service ? View.GONE : View.VISIBLE);
+        updateStatusPill(write && service);
         if (brightnessStatus != null) {
             brightnessStatus.setText("Brightness permission - " + (write ? "Enabled" : "Needed"));
             keyStatus.setText("Key detection - " + (service ? "Enabled" : "Needed"));
-            brightnessStatus.setTextColor(write ? Color.rgb(70, 150, 75) : Color.rgb(190, 130, 35));
-            keyStatus.setTextColor(service ? Color.rgb(70, 150, 75) : Color.rgb(190, 130, 35));
+            brightnessStatus.setTextColor(write ? Palette.GREEN : Palette.YELLOW);
+            keyStatus.setTextColor(service ? Palette.GREEN : Palette.YELLOW);
         }
     }
 
     private void updateSetupButton(Button button, String label, boolean available) {
         if (button == null) return;
         button.setTextSize(button == checkRootButton ? 14 : button == brightnessPermissionButton ? 14 : 16);
-        button.setText(available ? label + " - Enabled" : label + " - Needed");
-        button.setTextColor(themeColor(android.R.attr.textColorPrimary));
-        button.setBackgroundTintList(available
-                ? ColorStateList.valueOf(Color.rgb(70, 130, 75))
-                : ColorStateList.valueOf(Color.rgb(170, 115, 35)));
+        button.setText(available
+                ? (button == brightnessPermissionButton ? "\u2713  Permissions ready" : label + " - Enabled")
+                : label + " - Needed");
+        applyStatus(button, available);
     }
 
     private boolean isAccessibilityServiceEnabled() {
@@ -1655,11 +1924,11 @@ public class MainActivity extends Activity {
     }
 
     private void updateStepLabel(int percent) {
-        stepLabel.setText(percent + "% per press");
+        stepLabel.setText(percent + "%");
     }
 
     private void updateRepeatLabel(int delay) {
-        repeatLabel.setText(delay + " ms between steps");
+        repeatLabel.setText(delay + " ms");
     }
 
     private String appVersionName() {
@@ -1689,14 +1958,12 @@ public class MainActivity extends Activity {
             if (privilegeButton != null && !rootCheckRunning) {
                 privilegeButton.setText(shizuku ? "Shizuku (ADB) - Enabled"
                         : root ? "Root access - Enabled" : "Privilege access - Needed");
-                privilegeButton.setBackgroundTintList(ColorStateList.valueOf((root || shizuku)
-                        ? Color.rgb(70, 130, 75) : Color.rgb(170, 115, 35)));
+                applyStatus(privilegeButton, root || shizuku);
             }
         }
         // Keep this explanatory text stable; the switch state itself shows
         // whether root directional input is enabled.
-        rootStatus.setText("Root or Shizuku access is optional for regular button mappings.\nPrivilege detected: "
-                + (shizuku ? ShizukuSupport.status() : root ? "Root" : "None"));
+        rootStatus.setText("Detected: " + (shizuku ? ShizukuSupport.status() : root ? "Root" : "None"));
     }
 
     private String keyName(int code) {
@@ -1709,7 +1976,7 @@ public class MainActivity extends Activity {
         if ("Modifier".equals(title) && prefs.getInt(Prefs.ROOT_MODIFIER_DIRECTION, 0) != 0) {
             int source = prefs.getInt(Prefs.ROOT_MODIFIER_SOURCE, Prefs.AXIS_DPAD);
             assigned = sourceName(source) + " " + rootDirectionName(
-                    prefs.getInt(Prefs.ROOT_MODIFIER_DIRECTION, 0)) + " (root)";
+                    prefs.getInt(Prefs.ROOT_MODIFIER_DIRECTION, 0));
         } else if (!(prefs.getBoolean(Prefs.ROOT_AXES, false)
                 && rootDirectionMapped(title))
                 || (!"Brighter".equals(title) && !"Dimmer".equals(title))) {
@@ -1720,7 +1987,7 @@ public class MainActivity extends Activity {
             String control = sourceName(source);
             int direction = prefs.getInt("Brighter".equals(title)
                     ? Prefs.ROOT_BRIGHT_DIRECTION : Prefs.ROOT_DIM_DIRECTION, 0);
-            assigned = control + " " + rootDirectionName(direction) + " (root)";
+            assigned = control + " " + rootDirectionName(direction);
         }
         return styledLabel(title, assigned);
     }
@@ -1730,7 +1997,7 @@ public class MainActivity extends Activity {
         int dir = prefs.getInt(bright ? Prefs.ROOT_B_BRIGHT_DIRECTION : Prefs.ROOT_B_DIM_DIRECTION, 0);
         if (prefs.getBoolean(Prefs.ROOT_AXES, false) && dir != 0) {
             int source = prefs.getInt(bright ? Prefs.ROOT_B_BRIGHT_SOURCE : Prefs.ROOT_B_DIM_SOURCE, Prefs.AXIS_DPAD);
-            return sourceName(source) + " " + rootDirectionName(dir) + " (root)";
+            return sourceName(source) + " " + rootDirectionName(dir);
         }
         String pref = bright ? Prefs.B_UP_KEY : Prefs.B_DOWN_KEY;
         return keyName(prefs.getInt(pref, Prefs.defaultKey(pref)));
@@ -1739,8 +2006,12 @@ public class MainActivity extends Activity {
     private CharSequence styledLabel(String title, String assigned) {
         String full = title + "\n" + assigned;
         SpannableString styled = new SpannableString(full);
-        styled.setSpan(new BackgroundColorSpan(Color.rgb(95, 75, 125)),
+        styled.setSpan(new ForegroundColorSpan(Palette.MAUVE),
                 full.length() - assigned.length(), full.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        styled.setSpan(new android.text.style.RelativeSizeSpan(1.15f),
+                full.length() - assigned.length(), full.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        styled.setSpan(new ForegroundColorSpan(Palette.SUBTEXT0),
+                0, title.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         return styled;
     }
 
@@ -1782,6 +2053,7 @@ public class MainActivity extends Activity {
             dimmerMappingLabel.setText(mappingLabel("Dimmer",
                     prefs.getInt(Prefs.DOWN_KEY, KeyEvent.KEYCODE_VOLUME_DOWN)));
         }
+        updateBindingSummaries();
         if (bModifierMappingLabel != null) {
             bModifierMappingLabel.setText(styledLabel("Modifier",
                     keyName(prefs.getInt(Prefs.B_MODIFIER, Prefs.defaultKey(Prefs.B_MODIFIER)))));
@@ -1832,9 +2104,139 @@ public class MainActivity extends Activity {
                 || code == KeyEvent.KEYCODE_DPAD_CENTER;
     }
 
+    private void updateStatusPill(boolean ready) {
+        if (statusPill == null) return;
+        statusPill.setText(ready ? "\u25CF  Ready" : "\u25CF  Setup needed");
+        statusPill.setTextColor(ready ? Palette.GREEN : Palette.PEACH);
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(Palette.withAlpha(ready ? Palette.GREEN : Palette.PEACH, 0x30));
+        pill.setCornerRadius(dp(CORNER));
+        statusPill.setBackground(pill);
+    }
+
+    /**
+     * Setup popup: required permissions, then optional root/Shizuku. Opens on
+     * first launch (and whenever permissions are missing) and from the
+     * header status pill.
+     */
+    private void showSetupDialog() {
+        if (setupDialog != null && setupDialog.isShowing()) return;
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(24), dp(8), dp(24), dp(4));
+
+        TextView stepOne = text("1  \u00B7  Permissions (required)", 15, true);
+        stepOne.setTextColor(Palette.MAUVE);
+        content.addView(stepOne, matchMargins(0, 0, 0, 2));
+        TextView stepOneHint = text("Brightness control and key detection. Tap the button and follow "
+                + "the prompts; press B to come back here.", 13, false);
+        stepOneHint.setTextColor(Palette.SUBTEXT0);
+        content.addView(stepOneHint, matchMargins(0, 0, 0, 6));
+        if (setupPanel.getParent() != null) ((ViewGroup) setupPanel.getParent()).removeView(setupPanel);
+        content.addView(setupPanel, matchMargins(0, 0, 0, 14));
+
+        TextView stepTwo = text("2  \u00B7  Privileged input (optional)", 15, true);
+        stepTwo.setTextColor(Palette.MAUVE);
+        content.addView(stepTwo, matchMargins(0, 0, 0, 2));
+        TextView stepTwoHint = text("Shizuku or root lets bindings use the D-pad and sticks, and "
+                + "pause conflicting apps while a modifier is held. Skip it if you only use buttons.", 13, false);
+        stepTwoHint.setTextColor(Palette.SUBTEXT0);
+        content.addView(stepTwoHint, matchMargins(0, 0, 0, 6));
+        Button privilege = button("Check privilege access");
+        privilege.setHeight(dp(44));
+        privilege.setOnClickListener(v -> checkRootAccess(privilege));
+        updateRootCheckVisual(privilege);
+        content.addView(privilege, matchMargins(0, 0, 0, 4));
+
+        polish(content);
+        setupDialog = new AlertDialog.Builder(this)
+                .setCustomTitle(centeredDialogTitle("Set up Thor's Lightning \u26A1"))
+                .setView(content)
+                .setPositiveButton("Done", (dialog, which) -> {
+                    prefs.edit().putBoolean(Prefs.SETUP_GUIDE_SHOWN, true).apply();
+                    new Handler(Looper.getMainLooper()).postDelayed(this::maybeShowConflictWarning, 250);
+                })
+                .create();
+        setupDialog.show();
+        if (setupDialog.getWindow() != null) {
+            setupDialog.getWindow().setLayout(dp(620), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        updateSetupButtons();
+    }
+
+    /** Section title with a small ⓘ that opens an explanation dialog. */
+    private LinearLayout headerWithInfo(String title, String dialogTitle, String body) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(section(title), new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        // Bare icon, no button box; a ring still shows when focused by controller.
+        TextView info = new TextView(this);
+        info.setText("\u24D8");
+        info.setTextSize(20);
+        info.setTextColor(Palette.SUBTEXT0);
+        info.setGravity(Gravity.CENTER);
+        info.setFocusable(true);
+        info.setClickable(true);
+        info.setBackground(focusRing(CORNER));
+        info.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle(dialogTitle).setMessage(body)
+                .setPositiveButton("Got it", null).show());
+        row.addView(info, new LinearLayout.LayoutParams(dp(34), dp(34)));
+        return row;
+    }
+
+    private LinearLayout stack(View... views) {
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        for (View view : views) column.addView(view, matchMargins(0, 0, 0, 0));
+        return column;
+    }
+
+    /** e.g. "L1 + D-pad Up / Down  →  Top" */
+    private void updateBindingSummaries() {
+        if (bindingSummaryA != null) bindingSummaryA.setText(bindingSummary(false));
+        if (bindingSummaryB != null) bindingSummaryB.setText(bindingSummary(true));
+    }
+
+    private String bindingSummary(boolean second) {
+        String modifierPref = second ? Prefs.B_MODIFIER : Prefs.MODIFIER;
+        String modifier = keyName(prefs.getInt(modifierPref, Prefs.defaultKey(modifierPref)));
+        String bright = assignedName(second, true);
+        String dim = assignedName(second, false);
+        String keys;
+        String brightSource = bright.contains(" ") ? bright.substring(0, bright.lastIndexOf(' ')) : "";
+        String dimSource = dim.contains(" ") ? dim.substring(0, dim.lastIndexOf(' ')) : "";
+        if (!brightSource.isEmpty() && brightSource.equals(dimSource)) {
+            keys = brightSource + " " + bright.substring(bright.lastIndexOf(' ') + 1)
+                    + " / " + dim.substring(dim.lastIndexOf(' ') + 1);
+        } else {
+            keys = bright + " / " + dim;
+        }
+        int target = prefs.getInt(second ? Prefs.B_TARGET : Prefs.TARGET,
+                second ? Prefs.TARGET_BOTTOM : Prefs.TARGET_BOTH);
+        String screen = target == Prefs.TARGET_TOP ? "Top" : target == Prefs.TARGET_BOTTOM ? "Bottom" : "Both screens";
+        return modifier + " + " + keys + "  \u2192  " + screen;
+    }
+
+    /** Short name of a binding's Brighter/Dimmer: "D-pad Up" or "VOLUME UP". */
+    private String assignedName(boolean second, boolean bright) {
+        String dirKey = second ? (bright ? Prefs.ROOT_B_BRIGHT_DIRECTION : Prefs.ROOT_B_DIM_DIRECTION)
+                : (bright ? Prefs.ROOT_BRIGHT_DIRECTION : Prefs.ROOT_DIM_DIRECTION);
+        String srcKey = second ? (bright ? Prefs.ROOT_B_BRIGHT_SOURCE : Prefs.ROOT_B_DIM_SOURCE)
+                : (bright ? Prefs.ROOT_BRIGHT_SOURCE : Prefs.ROOT_DIM_SOURCE);
+        int direction = prefs.getInt(dirKey, 0);
+        if (prefs.getBoolean(Prefs.ROOT_AXES, false) && direction != 0) {
+            return sourceName(prefs.getInt(srcKey, Prefs.AXIS_DPAD)) + " " + rootDirectionName(direction);
+        }
+        String pref = second ? (bright ? Prefs.B_UP_KEY : Prefs.B_DOWN_KEY) : (bright ? Prefs.UP_KEY : Prefs.DOWN_KEY);
+        return keyName(prefs.getInt(pref, Prefs.defaultKey(pref)));
+    }
+
     private TextView section(String value) {
-        TextView view = text(value, 19, true);
-        view.setTextColor(themeColor(android.R.attr.colorAccent));
+        TextView view = text(value, 17, true);
+        view.setTextColor(Palette.MAUVE);
+        view.setLetterSpacing(0.02f);
         return view;
     }
 
@@ -1842,16 +2244,82 @@ public class MainActivity extends Activity {
         TextView view = new TextView(this);
         view.setText(value);
         view.setTextSize(sp);
+        view.setTextColor(Palette.TEXT);
         if (bold) view.setTypeface(view.getTypeface(), android.graphics.Typeface.BOLD);
         return view;
     }
 
+    /** Flat rounded button on a surface layer (no Material shadow). */
     private Button button(String value) {
         Button button = new Button(this);
         button.setText(value);
         button.setAllCaps(false);
-        button.setTextSize(16);
+        button.setTextSize(15);
+        button.setTextColor(Palette.TEXT);
+        button.setStateListAnimator(null);
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setPadding(dp(14), dp(8), dp(14), dp(8));
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(Color.WHITE);
+        shape.setCornerRadius(dp(CORNER));
+        button.setBackground(shape);
+        button.setBackgroundTintList(ColorStateList.valueOf(Palette.surface1));
         return button;
+    }
+
+    /** Status button: soft green when ready, soft peach when something is needed. */
+    private void applyStatus(Button button, boolean ok) {
+        if (button == null) return;
+        button.setBackgroundTintList(Palette.statusFill(ok));
+        button.setTextColor(Palette.statusText(ok));
+    }
+
+    /** Outline drawn only while a view has controller/keyboard focus. */
+    private android.graphics.drawable.Drawable focusRing(int radiusDp) {
+        GradientDrawable ring = new GradientDrawable();
+        ring.setColor(Color.TRANSPARENT);
+        ring.setCornerRadius(dp(radiusDp));
+        ring.setStroke(dp(3), Palette.LAVENDER);
+        android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_focused}, ring);
+        states.addState(new int[]{}, new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        return states;
+    }
+
+    /**
+     * Final theming pass over the built screen: Macchiato tints for stock
+     * widgets and a visible focus ring on everything the D-pad can reach.
+     */
+    private void polish(View view) {
+        int[][] checkedStates = {{android.R.attr.state_checked}, {}};
+        if (view instanceof Switch) {
+            Switch toggle = (Switch) view;
+            toggle.setTextColor(Palette.TEXT);
+            toggle.setThumbTintList(new ColorStateList(checkedStates,
+                    new int[]{Palette.MAUVE, Palette.OVERLAY1}));
+            toggle.setTrackTintList(new ColorStateList(checkedStates,
+                    new int[]{Palette.withAlpha(Palette.MAUVE, 0x80), Palette.surface1}));
+        } else if (view instanceof CheckBox) {
+            CheckBox box = (CheckBox) view;
+            box.setTextColor(Palette.TEXT);
+            box.setButtonTintList(new ColorStateList(checkedStates,
+                    new int[]{Palette.MAUVE, Palette.OVERLAY1}));
+        } else if (view instanceof SeekBar) {
+            SeekBar bar = (SeekBar) view;
+            bar.setProgressTintList(ColorStateList.valueOf(Palette.MAUVE));
+            bar.setThumbTintList(ColorStateList.valueOf(Palette.MAUVE));
+            bar.setProgressBackgroundTintList(ColorStateList.valueOf(Palette.surface2));
+        }
+        if (view.isFocusable() && !(view instanceof ViewGroup) && view.getForeground() == null) {
+            view.setForeground(focusRing(CORNER));
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) polish(group.getChildAt(i));
+        }
     }
 
     private TextView centeredDialogTitle(String value) {
@@ -1867,8 +2335,9 @@ public class MainActivity extends Activity {
         button.setPadding(dp(20), 0, dp(20), 0);
         GradientDrawable buttonBackground = new GradientDrawable();
         buttonBackground.setColor(Color.WHITE);
-        buttonBackground.setCornerRadius(dp(8));
+        buttonBackground.setCornerRadius(dp(CORNER));
         button.setBackground(buttonBackground);
+        button.setBackgroundTintList(ColorStateList.valueOf(Palette.surface1));
         // Keep the setup controls compact so the fixed three-column layout
         // clears the Thor's three-button navigation bar.
         button.setMinHeight(dp(48));
@@ -1884,17 +2353,26 @@ public class MainActivity extends Activity {
         return radio;
     }
 
+    private ScrollView scrollCard(LinearLayout card) {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setBackground(card.getBackground());
+        scroll.setClipToOutline(true);
+        card.setBackground(null);
+        scroll.addView(card, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return scroll;
+    }
+
     private LinearLayout card() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(14), dp(4), dp(14), dp(8));
-        boolean dark = (getResources().getConfiguration().uiMode
-                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         GradientDrawable background = new GradientDrawable();
-        background.setColor(dark ? Color.rgb(54, 52, 57) : Color.rgb(247, 243, 249));
-        background.setCornerRadius(dp(12));
-        background.setStroke(dp(1), dark
-                ? Color.rgb(82, 79, 88) : Color.rgb(222, 216, 226));
+        background.setColor(Palette.mantle);
+        background.setCornerRadius(dp(CORNER));
+        background.setStroke(dp(1), Palette.surface0);
         card.setBackground(background);
         return card;
     }
