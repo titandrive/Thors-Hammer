@@ -55,6 +55,9 @@ public class MainActivity extends Activity {
     private TextView setupHint;
     private LinearLayout setupPanel;
     private TextView statusPill;
+    private LinearLayout statusRows;
+    /** Input controls; built once, shown inside the Settings popup. */
+    private LinearLayout inputCard;
     private Button wakeSettingsButton;
     private AlertDialog setupDialog;
     private TextView bindingSummaryA;
@@ -90,6 +93,10 @@ public class MainActivity extends Activity {
                     if (enabledSwitch.isChecked() != enabled) {
                         enabledSwitch.setChecked(enabled);
                     }
+                }
+                if (Prefs.ROOT_AXES.equals(key) || Prefs.GENTLE_WAKE.equals(key)
+                        || Prefs.B_ENABLED.equals(key)) {
+                    runOnUiThread(this::refreshStatusCard);
                 }
             };
     private boolean capturing;
@@ -189,6 +196,7 @@ public class MainActivity extends Activity {
         statusPill.setClickable(true);
         statusPill.setOnClickListener(v -> showSetupDialog());
         titleRow.addView(statusPill, margins(10, 0, 0, 0));
+        addLevelBars(titleRow);
         heading.addView(titleRow);
         header.addView(heading, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -202,6 +210,20 @@ public class MainActivity extends Activity {
             prefs.edit().putBoolean(Prefs.ENABLED, checked).apply();
             button.setText(checked ? "Enabled" : "Disabled");
         });
+        // Bare gear, same style as the info icons; ring only when focused.
+        TextView settings = new TextView(this);
+        settings.setText("\u2699\uFE0E");
+        settings.setTextSize(26);
+        settings.setTextColor(Palette.SUBTEXT0);
+        settings.setGravity(Gravity.CENTER);
+        settings.setFocusable(true);
+        settings.setClickable(true);
+        settings.setBackground(focusRing(CORNER));
+        settings.setContentDescription("Settings");
+        settings.setOnClickListener(v -> showSettingsDialog());
+        LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(dp(40), dp(40));
+        settingsParams.setMargins(dp(12), 0, dp(18), 0);
+        header.addView(settings, settingsParams);
         header.addView(enabledSwitch);
         root.addView(header, matchMargins(0, 0, 0, 2));
 
@@ -212,14 +234,16 @@ public class MainActivity extends Activity {
 
         LinearLayout setup = card();
         LinearLayout mappings = card();
-        LinearLayout behaviour = card();
-        // Each column scrolls inside its card so nothing is clipped.
-        columns.addView(scrollCard(mappings), weightedCardMargins(0, 0, 6, 0));
-        columns.addView(scrollCard(behaviour), weightedCardMargins(6, 0, 6, 0));
-        // Right column: Input card on top, a small separate Reset card below.
+        // Bindings | Input | Status + Reset. Brightness and Sleep/Wake live in
+        // the Settings popup (gear in the header). Columns scroll if needed.
+        // Bindings span two columns; Input lives in the Settings popup.
+        LinearLayout.LayoutParams wide = weightedCardMargins(0, 0, 6, 0);
+        wide.weight = 2f;
+        columns.addView(scrollCard(mappings), wide);
+        inputCard = setup;
         LinearLayout rightColumn = new LinearLayout(this);
         rightColumn.setOrientation(LinearLayout.VERTICAL);
-        rightColumn.addView(scrollCard(setup), new LinearLayout.LayoutParams(
+        rightColumn.addView(scrollCard(statusCard()), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         rightColumn.addView(resetCard(), matchMargins(0, 12, 0, 0));
         columns.addView(rightColumn, weightedCardMargins(6, 0, 0, 0));
@@ -305,17 +329,16 @@ public class MainActivity extends Activity {
         addRootControls(setup);
         addReserveControls(setup);
 
-        mappings.addView(section("Bindings"));
-        TextView mappingHint = text("Hold a binding's modifier, then press its Brighter or Dimmer. "
-                + "Tap Record and press the control you want to assign.", 12, false);
-        mappingHint.setTextColor(Palette.SUBTEXT0);
-        mappings.addView(mappingHint, margins(0, 3, 0, 6));
+        mappings.addView(headerWithInfo("Bindings", "Bindings",
+                "Hold a binding's modifier, then press its Brighter or Dimmer to change "
+                + "the screen it targets.\n\nTap a control (Modifier, Brighter or Dimmer) "
+                + "and press the button or D-pad direction you want to assign.\n\n"
+                + "Add a second binding to control the other screen with its own "
+                + "modifier and step."), matchMargins(0, 0, 0, 6));
         bindingsContainer = new LinearLayout(this);
         bindingsContainer.setOrientation(LinearLayout.VERTICAL);
         mappings.addView(bindingsContainer, matchMargins(0, 0, 0, 0));
         rebuildBindings();
-        addBehaviourControls(behaviour);
-        addLevelBars(behaviour);
         polish(root);
         View decor = getWindow().getDecorView();
         muteClicks(decor);
@@ -627,19 +650,10 @@ public class MainActivity extends Activity {
         bindingsContainer.removeAllViews();
         modifierMappingLabel = brighterMappingLabel = dimmerMappingLabel = null;
         bModifierMappingLabel = bBrighterMappingLabel = bDimmerMappingLabel = null;
-        bindingsContainer.addView(bindingBox(false), matchMargins(0, 0, 0, 8));
-        if (prefs.getBoolean(Prefs.B_ENABLED, false)) {
-            bindingsContainer.addView(bindingBox(true), matchMargins(0, 0, 0, 8));
-        } else {
-            Button add = button("+  Add second binding");
-            add.setTextSize(14);
-            add.setOnClickListener(v -> {
-                prefs.edit().putBoolean(Prefs.B_ENABLED, true).apply();
-                ensureDistinctModifiers();
-                rebuildBindings();
-            });
-            bindingsContainer.addView(add, matchMargins(0, 0, 0, 4));
-        }
+        LinearLayout.LayoutParams left = matchMargins(0, 0, 0, 8);
+        LinearLayout.LayoutParams right = matchMargins(0, 0, 0, 8);
+        bindingsContainer.addView(bindingBox(false), left);
+        bindingsContainer.addView(bindingBox(true), right);
         polish(bindingsContainer);
     }
 
@@ -650,7 +664,7 @@ public class MainActivity extends Activity {
         boolean linked = prefs.getBoolean(Prefs.LINK_HOLD_STEP, true);
 
         TextView pressValue = valueText();
-        box.addView(valueRow("Step per press", pressValue), matchMargins(0, 6, 0, 0));
+        box.addView(valueRow("Step per press", pressValue), matchMargins(0, 2, 0, 0));
         SeekBar press = new SeekBar(this);
         press.setMax(24);
         int savedPress = Prefs.pressStep(prefs, second);
@@ -686,11 +700,20 @@ public class MainActivity extends Activity {
         box.addView(hold, matchMargins(0, 0, 0, 0));
     }
 
+    private void setEnabledDeep(View view, boolean enabled) {
+        view.setEnabled(enabled);
+        view.setFocusable(enabled);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) setEnabledDeep(group.getChildAt(i), enabled);
+        }
+    }
+
     /** One self-contained binding: modifier, Brighter, Dimmer, steps and its screen. */
     private LinearLayout bindingBox(boolean second) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(10), dp(6), dp(10), dp(8));
+        box.setPadding(dp(10), dp(4), dp(10), dp(6));
         GradientDrawable background = new GradientDrawable();
         background.setColor(Palette.mantle);
         background.setCornerRadius(dp(CORNER));
@@ -699,41 +722,54 @@ public class MainActivity extends Activity {
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text(second ? "Binding 2" : "Binding 1", 15, true);
+        header.setMinimumHeight(dp(26));
+        TextView title = text(second ? "Binding 2" : "Binding 1", 16, true);
         header.addView(title, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        boolean bOn = !second || prefs.getBoolean(Prefs.B_ENABLED, false);
         if (second) {
-            Button remove = button("Remove");
-            remove.setTextSize(13);
-            remove.setOnClickListener(v -> {
-                prefs.edit().putBoolean(Prefs.B_ENABLED, false).apply();
+            // Binding 2 is always shown; switching it off dims it instead.
+            Switch on = new Switch(this);
+            on.setText(bOn ? "On" : "Off");
+            on.setTextSize(13);
+            on.setChecked(bOn);
+            on.setOnCheckedChangeListener((button, checked) -> {
+                prefs.edit().putBoolean(Prefs.B_ENABLED, checked).apply();
+                if (checked) ensureDistinctModifiers();
                 rebuildBindings();
             });
-            header.addView(remove, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
+            header.addView(on);
         }
-        box.addView(header, matchMargins(0, 0, 0, 0));
-        TextView summary = text("", 13, false);
-        summary.setTextColor(Palette.SUBTEXT1);
-        if (second) bindingSummaryB = summary; else bindingSummaryA = summary;
-        box.addView(summary, matchMargins(0, 0, 0, 4));
+        box.addView(header, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(26)));
 
         String modifierPref = second ? Prefs.B_MODIFIER : Prefs.MODIFIER;
         String upPref = second ? Prefs.B_UP_KEY : Prefs.UP_KEY;
         String downPref = second ? Prefs.B_DOWN_KEY : Prefs.DOWN_KEY;
-        addMappingRow(box, "Modifier", modifierPref,
+        // Modifier / Brighter / Dimmer as three tappable chips; tap one to record it.
+        LinearLayout chips = new LinearLayout(this);
+        chips.setOrientation(LinearLayout.HORIZONTAL);
+        addMappingRow(chips, "Modifier", modifierPref,
                 prefs.getInt(modifierPref, Prefs.defaultKey(modifierPref)), false);
-        addMappingRow(box, "Brighter", upPref,
+        addMappingRow(chips, "Brighter", upPref,
                 prefs.getInt(upPref, Prefs.defaultKey(upPref)), true);
-        addMappingRow(box, "Dimmer", downPref,
+        addMappingRow(chips, "Dimmer", downPref,
                 prefs.getInt(downPref, Prefs.defaultKey(downPref)), true);
+        box.addView(chips, matchMargins(0, 4, 0, 2));
 
         addStepControls(box, second);
 
-        box.addView(text("Screen", 13, true), margins(0, 6, 0, 0));
         box.addView(second
                 ? targetSelector(Prefs.B_TARGET, Prefs.TARGET_BOTTOM)
-                : targetSelector(Prefs.TARGET, Prefs.TARGET_BOTH), matchMargins(0, 0, 0, 0));
+                : targetSelector(Prefs.TARGET, Prefs.TARGET_BOTH), matchMargins(0, 4, 0, 0));
+        if (!bOn) {
+            // Dim and lock everything below the header while switched off.
+            for (int i = 1; i < box.getChildCount(); i++) {
+                View child = box.getChildAt(i);
+                child.setAlpha(0.4f);
+                setEnabledDeep(child, false);
+            }
+        }
         updateBindingSummaries();
         return box;
     }
@@ -801,9 +837,55 @@ public class MainActivity extends Activity {
         return segments;
     }
 
+    /** Brightness (repeat behaviour) and Sleep/Wake, opened from the header gear. */
+    private void showSettingsDialog() {
+        // Left: Brightness + Sleep/Wake. Right: Input (persistent views).
+        LinearLayout behaviour = card();
+        addBehaviourControls(behaviour);
+        if (inputCard.getParent() != null) ((ViewGroup) inputCard.getParent()).removeView(inputCard);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.HORIZONTAL);
+        content.setPadding(dp(20), 0, dp(20), dp(4));
+        // Two matching cards, equal height, so headings and switches line up.
+        content.setBaselineAligned(false);
+        LinearLayout.LayoutParams leftCol = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+        leftCol.setMargins(0, 0, dp(8), 0);
+        LinearLayout.LayoutParams rightCol = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+        rightCol.setMargins(dp(8), 0, 0, 0);
+        content.addView(behaviour, leftCol);
+        content.addView(inputCard, rightCol);
+        polish(content);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(content);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setCustomTitle(centeredDialogTitle("Settings"))
+                .setView(scroll)
+                .setPositiveButton("Done", null)
+                .create();
+        dialog.setOnDismissListener(d -> {
+            if (inputCard.getParent() != null) ((ViewGroup) inputCard.getParent()).removeView(inputCard);
+        });
+        dialog.setOnShowListener(d -> dialog.getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE));
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(
+                    (int) (getResources().getDisplayMetrics().widthPixels * 0.86f),
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
     private void addBehaviourControls(LinearLayout behaviour) {
 
-        behaviour.addView(section("Brightness"), margins(0, 4, 0, 0));
+        behaviour.addView(headerWithInfo("Brightness", "Brightness",
+                "Same step while holding: holding Brighter or Dimmer repeats each binding's "
+                + "step per press. Turn it off to give each binding a separate step per "
+                + "repeat.\n\nRepeat speed: how often the step repeats while held."),
+                matchMargins(0, 0, 0, 0));
         // Step sizes live in each binding box; these two apply to both.
         Switch linkHold = new Switch(this);
         linkHold.setText("Same step while holding");
@@ -927,6 +1009,55 @@ public class MainActivity extends Activity {
         parent.addView(consumeHint, margins(0, 0, 0, 6));
     }
 
+    /** At-a-glance status of everything the app depends on, plus quick tips. */
+    private LinearLayout statusCard() {
+        LinearLayout card = card();
+        card.addView(section("Status"), margins(0, 4, 0, 6));
+        statusRows = new LinearLayout(this);
+        statusRows.setOrientation(LinearLayout.VERTICAL);
+        card.addView(statusRows, matchMargins(0, 0, 0, 0));
+        refreshStatusCard();
+
+        card.addView(section("Tips"), margins(0, 8, 0, 2));
+        String[] tips = {
+                "Long-press the app icon for a Turn on / off shortcut.",
+                "Add the Thor\u2019s Lightning tile to Quick Settings.",
+                "Emergency off: hold a modifier and press Brighter and Dimmer together."};
+        for (String tip : tips) {
+            TextView line = text("\u2022  " + tip, 12, false);
+            line.setTextColor(Palette.SUBTEXT0);
+            card.addView(line, matchMargins(0, 2, 0, 2));
+        }
+        return card;
+    }
+
+    private void refreshStatusCard() {
+        if (statusRows == null) return;
+        statusRows.removeAllViews();
+        boolean service = isAccessibilityServiceEnabled();
+        boolean write = Settings.System.canWrite(this);
+        boolean shizuku = ShizukuSupport.available();
+        boolean dpad = prefs.getBoolean(Prefs.ROOT_AXES, false);
+        addStatusRow("Key detection", service ? "On" : "Needed", service);
+        addStatusRow("Brightness access", write ? "Allowed" : "Needed", write);
+        addStatusRow("Shizuku", shizuku ? "Connected" : "Off", shizuku);
+        addStatusRow("D-pad / Joystick", dpad ? "On" : "Off", dpad);
+        boolean fade = prefs.getBoolean(Prefs.GENTLE_WAKE, false);
+        addStatusRow("Fade in on wake", fade ? "On" : "Off", fade);
+        addStatusRow("Bindings", prefs.getBoolean(Prefs.B_ENABLED, false) ? "2" : "1", true);
+    }
+
+    private void addStatusRow(String label, String value, boolean good) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name = text(label, 14, false);
+        row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView state = text("\u25CF  " + value, 14, true);
+        state.setTextColor(good ? Palette.GREEN : Palette.OVERLAY1);
+        row.addView(state);
+        statusRows.addView(row, matchMargins(0, 3, 0, 3));
+    }
+
     /** Small standalone card holding the reset-to-defaults button. */
     private LinearLayout resetCard() {
         LinearLayout card = card();
@@ -971,15 +1102,31 @@ public class MainActivity extends Activity {
     }
 
     /** Live Top/Bottom brightness, refreshed while the app is in front. */
+    /** Compact live Top/Bottom brightness in the header. */
     private void addLevelBars(LinearLayout parent) {
-        parent.addView(section("Current brightness"), margins(0, 14, 0, 4));
-        topLevelText = valueText();
-        bottomLevelText = valueText();
+        topLevelText = text("", 13, true);
+        bottomLevelText = text("", 13, true);
+        topLevelText.setTextColor(Palette.YELLOW);
+        bottomLevelText.setTextColor(Palette.YELLOW);
         topLevelBar = levelBar();
         bottomLevelBar = levelBar();
-        parent.addView(levelRow("Top", topLevelBar, topLevelText), matchMargins(0, 2, 0, 6));
-        parent.addView(levelRow("Bottom", bottomLevelBar, bottomLevelText), matchMargins(0, 0, 0, 0));
+        parent.addView(headerLevel("Top", topLevelBar, topLevelText), margins(18, 0, 0, 0));
+        parent.addView(headerLevel("Bottom", bottomLevelBar, bottomLevelText), margins(14, 0, 0, 0));
         refreshLevelBars();
+    }
+
+    private LinearLayout headerLevel(String label, android.widget.ProgressBar bar, TextView value) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name = text(label, 13, false);
+        name.setTextColor(Palette.SUBTEXT0);
+        row.addView(name);
+        row.addView(bar, margins(8, 0, 8, 0));
+        bar.getLayoutParams().width = dp(48);
+        bar.getLayoutParams().height = dp(6);
+        value.setSingleLine(true);
+        row.addView(value);
+        return row;
     }
 
     private TextView valueText() {
@@ -1048,21 +1195,11 @@ public class MainActivity extends Activity {
         bottomLevelText.setText(bottom < 0 ? "\u2014" : bottom + "%");
     }
 
+    /** One tappable chip ("Brighter / Vol +") that records its control when tapped. */
     private void addMappingRow(LinearLayout parent, String title, String preference,
                                int currentKey, boolean allowsVolume) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(46));
-        GradientDrawable rowBackground = new GradientDrawable();
-        rowBackground.setColor(Palette.surface0);
-        rowBackground.setCornerRadius(dp(CORNER));
-        rowBackground.setStroke(dp(1), Palette.surface1);
-        row.setBackground(rowBackground);
-        row.setPadding(dp(8), dp(1), dp(8), dp(1));
         TextView label = text("", 14, true);
-        label.setTextSize(12);
-        label.setMaxLines(2);
+        label.setMaxLines(3);
         label.setEllipsize(android.text.TextUtils.TruncateAt.END);
         label.setText(Prefs.B_UP_KEY.equals(preference) ? styledLabel(title, bindingBAssigned(true))
                 : Prefs.B_DOWN_KEY.equals(preference) ? styledLabel(title, bindingBAssigned(false))
@@ -1074,24 +1211,28 @@ public class MainActivity extends Activity {
         if (Prefs.B_MODIFIER.equals(preference)) bModifierMappingLabel = label;
         if (Prefs.B_UP_KEY.equals(preference)) bBrighterMappingLabel = label;
         if (Prefs.B_DOWN_KEY.equals(preference)) bDimmerMappingLabel = label;
-        row.addView(label, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        Button record = button("Record");
-        record.setTextSize(16);
-        record.setGravity(Gravity.CENTER);
-        record.setPadding(0, 0, 0, 0);
-        record.setIncludeFontPadding(false);
-        record.setOnClickListener(v -> {
+        GradientDrawable chipBackground = new GradientDrawable();
+        chipBackground.setColor(Palette.surface0);
+        chipBackground.setCornerRadius(dp(CORNER));
+        chipBackground.setStroke(dp(1), Palette.surface1);
+        label.setBackground(chipBackground);
+        label.setPadding(dp(8), dp(5), dp(6), dp(5));
+        label.setMinHeight(dp(42));
+        label.setGravity(Gravity.CENTER_VERTICAL);
+        label.setFocusable(true);
+        label.setClickable(true);
+        label.setOnClickListener(v -> {
             if (!requiredPermissionsReady()) {
                 Toast.makeText(this, "Set up both required permissions before recording buttons", Toast.LENGTH_LONG).show();
                 return;
             }
             showRecordPrompt(preference, label, title, allowsVolume);
         });
-        LinearLayout.LayoutParams recordParams = new LinearLayout.LayoutParams(dp(94), dp(38));
-        recordParams.gravity = Gravity.CENTER_VERTICAL;
-        row.addView(record, recordParams);
-        parent.addView(row, matchMargins(0, 3, 0, 3));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        params.setMargins(parent.getChildCount() == 0 ? 0 : dp(3), 0,
+                parent.getChildCount() == 2 ? 0 : dp(3), 0);
+        parent.addView(label, params);
     }
 
     private void updateRootCheckVisual(Button button) {
@@ -1936,6 +2077,7 @@ public class MainActivity extends Activity {
         updateSetupButton(brightnessPermissionButton, "Set up permissions", write && service);
         if (setupHint != null) setupHint.setVisibility(write && service ? View.GONE : View.VISIBLE);
         updateStatusPill(write && service);
+        refreshStatusCard();
         if (brightnessStatus != null) {
             brightnessStatus.setText("Brightness permission - " + (write ? "Enabled" : "Needed"));
             keyStatus.setText("Key detection - " + (service ? "Enabled" : "Needed"));
@@ -2075,6 +2217,8 @@ public class MainActivity extends Activity {
     }
 
     private String keyName(int code) {
+        if (code == KeyEvent.KEYCODE_VOLUME_UP) return "Vol +";
+        if (code == KeyEvent.KEYCODE_VOLUME_DOWN) return "Vol \u2212";
         return KeyEvent.keyCodeToString(code).replace("KEYCODE_", "")
                 .replace("BUTTON_", "").replace('_', ' ');
     }
@@ -2119,6 +2263,8 @@ public class MainActivity extends Activity {
         styled.setSpan(new android.text.style.RelativeSizeSpan(1.15f),
                 full.length() - assigned.length(), full.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         styled.setSpan(new ForegroundColorSpan(Palette.SUBTEXT0),
+                0, title.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        styled.setSpan(new android.text.style.RelativeSizeSpan(0.8f),
                 0, title.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         return styled;
     }
