@@ -196,8 +196,6 @@ public class BrightnessKeyService extends AccessibilityService {
     private boolean modifierDown;
     private boolean modifierBDown;
     private boolean rootModifierDown;
-    private boolean volumeUpDown;
-    private boolean volumeDownDown;
     private int activeDirection;
     // Screen target of the binding that started the current press/repeat.
     private int activeTarget = Prefs.TARGET_BOTH;
@@ -295,20 +293,12 @@ public class BrightnessKeyService extends AccessibilityService {
             // active source. Do not also run A's configured buttons (including
             // the default volume keys) at the same time.
             if (prefs.getBoolean(Prefs.ROOT_AXES, false) && rootDirectionsMapped(prefs)) {
-                volumeUpDown = false;
-                volumeDownDown = false;
                 return false;
             }
             if (keyCode != upKey && keyCode != downKey) return false;
         }
         int bindUp = useB ? upKeyB : upKey;
         int bindDown = useB ? downKeyB : downKey;
-        if (keyCode == bindUp) {
-            volumeUpDown = down;
-        } else {
-            volumeDownDown = down;
-        }
-
         boolean enabled = isRemappingEnabled();
         boolean bindingHeld = useB ? modifierBDown : modifierDown;
         if (!bindingHeld || !enabled || !isScreenInteractive()) {
@@ -316,11 +306,6 @@ public class BrightnessKeyService extends AccessibilityService {
             // can continue to receive them. Volume is consumed only when a
             // modifier is held and this service is actively remapping it.
             return false;
-        }
-
-        if (volumeUpDown && volumeDownDown) {
-            emergencyDisable();
-            return true;
         }
 
         if (down) {
@@ -667,14 +652,6 @@ public class BrightnessKeyService extends AccessibilityService {
         });
     }
 
-    private void emergencyDisable() {
-        Prefs.get(this).edit().putBoolean(Prefs.ENABLED, false).apply();
-        Toast.makeText(this, "Brightness control switched off — turn it back on in the app", Toast.LENGTH_LONG).show();
-        modifierDown = false;
-        modifierBDown = false;
-        stopRepeating();
-    }
-
     private void stopRepeating() {
         activeDirection = 0;
         handler.removeCallbacks(repeater);
@@ -695,8 +672,6 @@ public class BrightnessKeyService extends AccessibilityService {
         }
         modifierDown = false;
         modifierBDown = false;
-        volumeUpDown = false;
-        volumeDownDown = false;
         stopRepeating();
     }
 

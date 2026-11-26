@@ -66,6 +66,9 @@ on an AYN Thor.
   reserve modifier buttons).
 - **Bottom-screen level sync:** brightness and volume changes on the bottom
   screen are written back to AYN's settings so AYN's own controls stay in step.
+- **Quick toggles:** two Quick Settings tiles (**Brightness**, **Volume**) and
+  two long-press app-icon shortcuts (**Brightness on / off**, **Volume on / off**)
+  switch each control on or off without opening the app.
 - **Reset App** restores defaults while keeping permissions and setup.
 - Catppuccin Macchiato theme, subtle haptics, no click sounds, controller
   focus rings.

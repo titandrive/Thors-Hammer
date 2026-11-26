@@ -61,6 +61,7 @@ public class MainActivity extends Activity {
     private View volumePage;
     private LinearLayout volLinkedOptions;
     private LinearLayout volBody;
+    private Switch volEnableSwitch;
     private Runnable volPaint;
 
     /** Input controls; built once, shown inside the Settings popup. */
@@ -102,6 +103,13 @@ public class MainActivity extends Activity {
                         enabledSwitch.setChecked(enabled);
                     }
                     runOnUiThread(this::applyBrightnessEnabled);
+                }
+                if (Prefs.VOL_ENABLED.equals(key) && volEnableSwitch != null) {
+                    boolean on = sharedPreferences.getBoolean(Prefs.VOL_ENABLED, false);
+                    runOnUiThread(() -> {
+                        if (volEnableSwitch.isChecked() != on) volEnableSwitch.setChecked(on);
+                        applyVolumeEnabled();
+                    });
                 }
                 if (Prefs.ROOT_AXES.equals(key) || Prefs.GENTLE_WAKE.equals(key)
                         || Prefs.ENABLED.equals(key)
@@ -955,6 +963,7 @@ public class MainActivity extends Activity {
         head.addView(section("Control volume"), new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         Switch handle = new Switch(this);
+        volEnableSwitch = handle;
         handle.setText("Enable");
         handle.setTextSize(14);
         handle.setChecked(prefs.getBoolean(Prefs.VOL_ENABLED, false));

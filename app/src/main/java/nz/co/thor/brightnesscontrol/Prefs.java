@@ -103,6 +103,19 @@ final class Prefs {
         return context.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
+    /** Flip brightness (ENABLED, default on) or volume (VOL_ENABLED, default off). */
+    static boolean toggle(Context context, String key) {
+        boolean fallback = ENABLED.equals(key);
+        boolean on = !get(context).getBoolean(key, fallback);
+        get(context).edit().putBoolean(key, on).apply();
+        // Let both Quick Settings tiles redraw with the new state.
+        for (Class<?> tile : new Class<?>[]{BrightnessTile.class, VolumeTile.class}) {
+            android.service.quicksettings.TileService.requestListeningState(context,
+                    new android.content.ComponentName(context, tile));
+        }
+        return on;
+    }
+
     static int modifier(Context context) {
         return get(context).getInt(MODIFIER, KeyEvent.KEYCODE_BUTTON_R1);
     }

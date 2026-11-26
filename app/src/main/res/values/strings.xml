@@ -2,4 +2,6 @@
     <string name="app_name">Thor’s Hammer</string>
     <string name="service_name">Thor’s Hammer controls</string>
     <string name="service_description">Uses configurable controller buttons to adjust brightness and volume on the AYN Thor. It does not read screen content.</string>
+    <string name="shortcut_brightness">Brightness on / off</string>
+    <string name="shortcut_volume">Volume on / off</string>
 </resources>
