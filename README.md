@@ -213,6 +213,8 @@ Additional improvements:
 - Volume tab with Thor Volume Link's top / bottom / linked / follow-focus modes.
 - Renamed to Thor's Hammer; Status panel on both tabs, per-tab Enable switches,
   underline tabs and tab-aware header levels.
+- Quick Settings tiles and app shortcuts to toggle brightness and volume.
+- Release builds signed with Thor's Hammer's own key.
 
 ## License
 

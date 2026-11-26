@@ -14,10 +14,25 @@ android {
         versionName "1.4.0"
     }
 
+    // Release key lives outside the repo; its path and passwords come from
+    // ~/.gradle/gradle.properties (THORS_HAMMER_*). Without them, release
+    // builds fall back to the debug key so the build never breaks.
+    signingConfigs {
+        release {
+            if (project.hasProperty("THORS_HAMMER_STORE")) {
+                storeFile file(THORS_HAMMER_STORE)
+                storePassword project.findProperty("THORS_HAMMER_STORE_PASSWORD")
+                keyAlias THORS_HAMMER_ALIAS
+                keyPassword project.findProperty("THORS_HAMMER_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig project.hasProperty("THORS_HAMMER_STORE_PASSWORD")
+                    ? signingConfigs.release : signingConfigs.debug
         }
     }
 }
