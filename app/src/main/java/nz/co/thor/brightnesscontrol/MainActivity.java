@@ -185,24 +185,20 @@ public class MainActivity extends Activity {
         // Let the cards use the available height down to the navigation bar.
         root.setPadding(dp(16), dp(2), dp(16), dp(14));
 
+        // Header: title | tabs centred in the space between | levels + settings.
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout heading = new LinearLayout(this);
-        heading.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout titleRow = new LinearLayout(this);
-        titleRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = text("Thor's Lightning \u26A1", 20, true);
-        titleRow.addView(title);
+        header.addView(title);
+        header.addView(new Space(this), new LinearLayout.LayoutParams(0, 1, 1f));
         // Brightness | Volume tabs (the version lives in the Settings title).
-        LinearLayout tabs = segmented(Prefs.UI_TAB, 0, new int[]{0, 1},
-                new String[]{"Brightness", "Volume"}, 32, this::applyTab);
-        titleRow.addView(tabs, new LinearLayout.LayoutParams(dp(200), dp(32)));
-        ((LinearLayout.LayoutParams) tabs.getLayoutParams()).setMargins(dp(16), 0, 0, 0);
-        addLevelBars(titleRow);
-        heading.addView(titleRow);
-        header.addView(heading, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
+        LinearLayout tabs = tabBar();
+        header.addView(tabs, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)));
+        header.addView(new Space(this), new LinearLayout.LayoutParams(0, 1, 1f));
+        LinearLayout right = new LinearLayout(this);
+        right.setGravity(Gravity.CENTER_VERTICAL);
+        addLevelBars(right);
 
         // Bare gear, same style as the info icons; ring only when focused.
         TextView settings = new TextView(this);
@@ -216,9 +212,11 @@ public class MainActivity extends Activity {
         settings.setContentDescription("Settings");
         settings.setOnClickListener(v -> showSettingsDialog());
         LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(dp(40), dp(40));
-        settingsParams.setMargins(dp(4), 0, 0, 0);
-        header.addView(settings, settingsParams);
-        root.addView(header, matchMargins(0, 0, 0, 2));
+        settingsParams.setMargins(dp(14), 0, 0, 0);
+        right.addView(settings, settingsParams);
+        header.addView(right);
+        root.addView(header, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(46)));
 
         // [ Bindings or Volume keys (two-thirds) | Status + Reset (both tabs) ]
         LinearLayout columns = new LinearLayout(this);
@@ -873,6 +871,65 @@ public class MainActivity extends Activity {
         bindingsContainer.setAlpha(prefs.getBoolean(Prefs.ENABLED, true) ? 1f : 0.4f);
     }
 
+    /** Underline tabs: icon + label, the active one mauve with a bar beneath. */
+    private LinearLayout tabBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        String[] names = {"Brightness", "Volume"};
+        int[] icons = {R.drawable.ic_sun, R.drawable.ic_speaker};
+        TextView[] labels = new TextView[2];
+        View[] lines = new View[2];
+        Runnable paint = () -> {
+            int selected = prefs.getInt(Prefs.UI_TAB, 0);
+            for (int i = 0; i < 2; i++) {
+                int color = i == selected ? Palette.MAUVE : Palette.SUBTEXT0;
+                labels[i].setTextColor(color);
+                labels[i].setCompoundDrawableTintList(ColorStateList.valueOf(color));
+                lines[i].setVisibility(i == selected ? View.VISIBLE : View.INVISIBLE);
+            }
+        };
+        for (int i = 0; i < 2; i++) {
+            LinearLayout tab = new LinearLayout(this);
+            tab.setOrientation(LinearLayout.VERTICAL);
+            tab.setGravity(Gravity.CENTER_HORIZONTAL);
+            tab.setFocusable(true);
+            tab.setClickable(true);
+            tab.setForeground(focusRing(CORNER));
+            tab.setPadding(dp(4), 0, dp(4), 0);
+            TextView label = text(names[i], 15, true);
+            label.setSingleLine(true);
+            android.graphics.drawable.Drawable icon = getDrawable(icons[i]);
+            icon.setBounds(0, 0, dp(18), dp(18));
+            label.setCompoundDrawablesRelative(icon, null, null, null);
+            label.setCompoundDrawablePadding(dp(6));
+            label.setGravity(Gravity.CENTER_VERTICAL);
+            tab.addView(label, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 0, 1f));
+            View line = new View(this);
+            GradientDrawable underline = new GradientDrawable();
+            underline.setColor(Palette.MAUVE);
+            underline.setCornerRadius(dp(2));
+            line.setBackground(underline);
+            tab.addView(line, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(3)));
+            labels[i] = label;
+            lines[i] = line;
+            final int value = i;
+            tab.setOnClickListener(v -> {
+                if (prefs.getInt(Prefs.UI_TAB, 0) == value) return;
+                prefs.edit().putInt(Prefs.UI_TAB, value).apply();
+                paint.run();
+                applyTab();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            lp.setMargins(i == 0 ? 0 : dp(18), 0, 0, 0);
+            bar.addView(tab, lp);
+        }
+        paint.run();
+        return bar;
+    }
+
     private void applyTab() {
         if (brightnessPage != null) haptic(getWindow().getDecorView());
         boolean volume = prefs.getInt(Prefs.UI_TAB, 0) == 1;
@@ -1349,7 +1406,7 @@ public class MainActivity extends Activity {
         levelIcon = new android.widget.ImageView(this);
         levelIcon.setImageTintList(ColorStateList.valueOf(Palette.SUBTEXT0));
         parent.addView(levelIcon, new LinearLayout.LayoutParams(dp(22), dp(22)));
-        ((LinearLayout.LayoutParams) levelIcon.getLayoutParams()).setMargins(dp(16), 0, 0, 0);
+        ((LinearLayout.LayoutParams) levelIcon.getLayoutParams()).setMargins(0, 0, 0, 0);
         // \u25B2 = top screen, \u25BC = bottom screen (words don't fit beside the tabs).
         parent.addView(headerLevel("\u25B2", topLevelBar, topLevelText), margins(8, 0, 0, 0));
         parent.addView(headerLevel("\u25BC", bottomLevelBar, bottomLevelText), margins(10, 0, 0, 0));
