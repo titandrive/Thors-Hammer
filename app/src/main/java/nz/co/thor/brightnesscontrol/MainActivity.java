@@ -188,7 +188,7 @@ public class MainActivity extends Activity {
         // Header: title | tabs centred in the space between | levels + settings.
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("Thor's Lightning \u26A1", 20, true);
+        TextView title = text("Thor's Hammer", 20, true);
         header.addView(title);
         header.addView(new Space(this), new LinearLayout.LayoutParams(0, 1, 1f));
         // Brightness | Volume tabs (the version lives in the Settings title).
@@ -284,7 +284,7 @@ public class MainActivity extends Activity {
             if (!prefs.getBoolean(Prefs.BRIGHTNESS_GUIDE_SHOWN, false)) {
                 new AlertDialog.Builder(this)
                         .setCustomTitle(centeredDialogTitle("Brightness permissions"))
-                        .setMessage("Press \"CONTINUE\" to open Android settings.\n\nThen enable the \"Allow modifying system settings\" toggle for Thor's Lightning.\n\nPress the Thor's \"B\" button or the Android Back button to return here.")
+                        .setMessage("Press \"CONTINUE\" to open Android settings.\n\nThen enable the \"Allow modifying system settings\" toggle for Thor's Hammer.\n\nPress the Thor's \"B\" button or the Android Back button to return here.")
                         .setPositiveButton("CONTINUE", (dialog, which) -> {
                             prefs.edit().putBoolean(Prefs.BRIGHTNESS_GUIDE_SHOWN, true).apply();
                             prefs.edit().putBoolean(Prefs.ADVANCE_TO_KEY_PENDING, true).apply();
@@ -303,7 +303,7 @@ public class MainActivity extends Activity {
             if (!prefs.getBoolean(Prefs.KEY_GUIDE_SHOWN, false)) {
                 new AlertDialog.Builder(this)
                         .setCustomTitle(centeredDialogTitle("Key detection"))
-                        .setMessage("Press \"Continue\" to open Android settings. Open \"Downloaded apps\", select \"Thor's Lightning controls\", toggle it on, then tap \"Allow\" and return here.")
+                        .setMessage("Press \"Continue\" to open Android settings. Open \"Downloaded apps\", select \"Thor's Hammer controls\", toggle it on, then tap \"Allow\" and return here.")
                         .setPositiveButton("Continue", (dialog, which) -> {
                             prefs.edit().putBoolean(Prefs.KEY_GUIDE_SHOWN, true).apply();
                             prefs.edit().putBoolean(Prefs.ADVANCE_TO_KEY_PENDING, false)
@@ -551,14 +551,14 @@ public class MainActivity extends Activity {
 
     private void showKeyTransitionPrompt() {
         new AlertDialog.Builder(this).setCustomTitle(centeredDialogTitle("Key detection"))
-                .setMessage("Press \"CONTINUE\" to open Android Accessibility settings.\n\nThen:\n- Scroll to \"Downloaded apps\".\n- Select \"Thor's Lightning controls\".\n- Toggle it on.\n- Tap \"Allow\" when Android asks.\n\nPress the Thor's \"B\" button or the Android Back button once to return here.")
+                .setMessage("Press \"CONTINUE\" to open Android Accessibility settings.\n\nThen:\n- Scroll to \"Downloaded apps\".\n- Select \"Thor's Hammer controls\".\n- Toggle it on.\n- Tap \"Allow\" when Android asks.\n\nPress the Thor's \"B\" button or the Android Back button once to return here.")
                 .setPositiveButton("CONTINUE", (d, w) -> openKeyDetection())
                 .setNegativeButton("Later", null).show();
     }
 
     private void showBrightnessTransitionPrompt() {
         new AlertDialog.Builder(this).setCustomTitle(centeredDialogTitle("Brightness permissions"))
-                .setMessage("After pressing \"Continue\":\n\n- Then enable the \"Allow modifying system settings\" toggle for Thor's Lightning.\n- Press the Thor's \"B\" button or the Android Back button to return here.")
+                .setMessage("After pressing \"Continue\":\n\n- Then enable the \"Allow modifying system settings\" toggle for Thor's Hammer.\n- Press the Thor's \"B\" button or the Android Back button to return here.")
                 .setPositiveButton("Continue", (d, w) -> openBrightnessPermission())
                 .setNegativeButton("Later", null).show();
     }
@@ -2316,7 +2316,7 @@ public class MainActivity extends Activity {
                 && !prefs.getBoolean(Prefs.SETUP_COMPLETE_SHOWN, false)) {
             prefs.edit().putBoolean(Prefs.SETUP_COMPLETE_SHOWN, true).apply();
             new AlertDialog.Builder(this)
-                    .setCustomTitle(centeredDialogTitle("\u26A1 Setup Complete! \u26A1"))
+                    .setCustomTitle(centeredDialogTitle("Setup Complete!"))
                     .setMessage("Brightness control is ready.\n\nRoot access or Shizuku is required if you want to use the D-pad or analogue sticks. To do this, follow the steps below:\n\n- Tap \"Check privilege access\".\n- Allow root access or Shizuku access when Android asks.\n- Turn on \"Enable D-pad / Joystick\".\n- Tap a Brighter or Dimmer \"Record\" button, then move the control and direction you want to use.\n\nRecord the Bright and Dim controls separately. Each can use its own D-pad or stick direction.")
                     .setPositiveButton("Got it", null).show();
         }
@@ -2459,7 +2459,7 @@ public class MainActivity extends Activity {
             return;
         }
         new AlertDialog.Builder(this)
-                .setCustomTitle(centeredDialogTitle("Welcome to Thor's Lightning! \u26A1"))
+                .setCustomTitle(centeredDialogTitle("Welcome to Thor's Hammer!"))
                 .setMessage("This app lets you use the AYN Thor's controller inputs to adjust the screen brightness!\n\nTo get started, tap \"Set up permissions\" to allow the app to function correctly.")
                 .setPositiveButton("Got it", (dialog, which) -> {
                     prefs.edit().putBoolean(Prefs.SETUP_GUIDE_SHOWN, true).apply();
@@ -2471,7 +2471,7 @@ public class MainActivity extends Activity {
     private void showStepTwoGuide() {
         new AlertDialog.Builder(this)
                 .setCustomTitle(centeredDialogTitle("Step 2 - Enable key detection"))
-                .setMessage("Open \"Downloaded apps\", select \"Thor's Lightning controls\", toggle it on, then tap \"Allow\" when Android asks.")
+                .setMessage("Open \"Downloaded apps\", select \"Thor's Hammer controls\", toggle it on, then tap \"Allow\" when Android asks.")
                 .setPositiveButton("Open Accessibility", (dialog, which) ->
                         startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
                 .setNegativeButton("Later", null)
@@ -2508,7 +2508,7 @@ public class MainActivity extends Activity {
                 .putStringSet(Prefs.CONFLICT_WARNING_SERVICES, updatedAcknowledged).apply();
         new AlertDialog.Builder(this)
                 .setCustomTitle(centeredDialogTitle("Controller conflict detected"))
-                .setMessage("Another Thor volume-control service is enabled. Both apps may respond to the same volume or controller input, which can make brightness and volume change together.\n\nRoot or Shizuku access is required for \"Suspend services during hold\". If you want Thor's Lightning to take priority while the modifier is held, enable \"Suspend services during hold\" and choose the detected service. You can dismiss this notice and change the option later.")
+                .setMessage("Another Thor volume-control service is enabled. Both apps may respond to the same volume or controller input, which can make brightness and volume change together.\n\nRoot or Shizuku access is required for \"Suspend services during hold\". If you want Thor's Hammer to take priority while the modifier is held, enable \"Suspend services during hold\" and choose the detected service. You can dismiss this notice and change the option later.")
                 .setPositiveButton("Got it", null)
                 .show();
     }
@@ -2748,7 +2748,7 @@ public class MainActivity extends Activity {
 
         polish(content);
         setupDialog = new AlertDialog.Builder(this)
-                .setCustomTitle(centeredDialogTitle("Set up Thor's Lightning \u26A1"))
+                .setCustomTitle(centeredDialogTitle("Set up Thor's Hammer"))
                 .setView(content)
                 .setPositiveButton("Done", (dialog, which) -> {
                     prefs.edit().putBoolean(Prefs.SETUP_GUIDE_SHOWN, true).apply();

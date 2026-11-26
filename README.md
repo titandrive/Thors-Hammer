@@ -1,133 +1,105 @@
-# Thor's Lightning
+# Thor's Hammer
 
-An unofficial Android utility for controller-driven dual-screen brightness
-control on the AYN Thor. It has been tested on the February 2026 Android 13
-firmware.
+An unofficial Android utility for the AYN Thor's two screens: controller-driven
+**brightness** for each screen, and **volume keys** that can drive the top
+screen, the bottom screen, both, or whichever screen you're using. Tested on
+the February 2026 Android 13 firmware.
 
-> **Unofficial project:** Thor's Lightning is an independent community utility.
+> **Unofficial project:** Thor's Hammer is an independent community utility.
 > It is not developed, sponsored, endorsed, or supported by Shenzhen AYN
 > Technologies Co., Ltd. AYN and Thor are used only to identify the compatible
 > device. All related trademarks belong to their respective owners.
 
-![Thor's Lightning dashboard](docs/dashboard-fork.png)
+![Brightness tab](docs/dashboard-brightness.png)
+![Volume tab](docs/dashboard-volume.png)
 
-## Changes in this fork
+## Credits
 
-This is a fork of [HughesTechNZ/Thors-Lightning](https://github.com/HughesTechNZ/Thors-Lightning)
-(v1.3.1). It adds:
+Thor's Hammer combines and builds on two MIT-licensed community projects:
 
-- **Two bindings, one per screen.** Add a second binding with its own
-  modifier, Brighter and Dimmer controls and screen target, e.g. L1 + D-pad
-  for the top screen and R1 + D-pad for the bottom. Each binding has a
-  summary line (`L1 + D-pad Up / Down → Top`) and a Top / Bottom / Both
-  selector. Both bindings can use D-pad and stick directions through Shizuku
-  or root.
-- **Redesigned UI** in Catppuccin Macchiato:
-  - Three scrollable columns: Bindings, Brightness, Input.
-  - The header shows a Ready / Setup needed status and an Enabled switch.
-  - Permissions are handled in a first-run setup popup instead of a
-    permanent column.
-  - Switches replace checkboxes, info icons explain each section, and live
-    bars show the current top and bottom brightness.
-  - Subtle rounded corners throughout; popups are compact and fit the top
-    screen.
-- **Simpler Sleep/Wake.** The **Fade in on wake** switch just turns the fade
-  on or off. Timings and the long-close reset live behind a **Fade settings**
-  button.
-- **Better recording popup.** It shows a short prompt with a countdown bar, and
-  can be cancelled with Cancel, Back or a tap outside.
-- **Volume tab** (adapted from
-  [Thor Volume Link](https://github.com/pth2000/ThorVolumeLink), MIT). Route the
-  volume keys to the top screen, the bottom screen, both (linked, optionally
-  keeping a hand-set balance), or whichever screen has focus. A brightness
-  modifier + volume still changes brightness. Bottom-screen volume needs
-  Shizuku or root. Turn off Thor Volume Link's own accessibility service if you
-  use this.
-- **Quick on/off.** Use the Quick Settings tile, or long-press the app icon for
-  a **Turn on / off** shortcut.
-- **Reset App.** A reset-to-defaults button that clears bindings and settings
-  while keeping permissions and setup.
-- **Feel.** Light haptic tick on taps and controller presses; click sounds
-  removed.
-- **Build.** Updated to Gradle 9.7.1 / AGP 9.4.0 so it builds with current
-  Android Studio JDKs.
+- **[Thor's Lightning](https://github.com/HughesTechNZ/Thors-Lightning)** by
+  HughesTechNZ: the original brightness app (modifier bindings, dual-screen
+  targeting, root/Shizuku D-pad input, service suspension, Sleep/Wake fade).
+  Thor's Hammer started as a fork of v1.3.1.
+- **[Thor Volume Link](https://github.com/pth2000/ThorVolumeLink)** by the
+  Thor Volume Link contributors: the volume-key modes (top, bottom, linked with
+  kept balance, and follow focus) are adapted from it.
 
-Fork changes were made with assistance from Claude Code and tested on an AYN
-Thor running the Android 13 firmware.
+See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Thor's Hammer's changes were made with assistance from Claude Code and tested
+on an AYN Thor.
 
-## What it does
+## Features
 
-- **Modifier-held brightness control:** hold a configurable controller button
-  and press mapped Bright or Dimmer controls to adjust brightness.
-- **Dual-screen targeting:** adjust the top screen, bottom screen, or both
-  screens together.
-- **Configurable mappings:** choose the modifier, Bright, and Dimmer controls
-  from standard Android controller buttons.
-- **Non-root volume support:** volume up and volume down work without root and
-  are reserved while mapped for brightness.
-- **Optional privileged input support:** devices with Root or Shizuku can
-  record any D-pad or analog-stick direction for Bright and Dimmer controls.
-- **Modifier reservation option:** root users can optionally reserve the
-  modifier itself while brightness controls are held.
-- **Service conflict handling:** select multiple accessibility services to
-  pause temporarily while the modifier is held, preventing other controller
-  tools from reacting to the same buttons at the same time.
-- **Clear setup status:** the in-app setup buttons show whether each required
-  permission is needed or enabled.
-- **Boot persistence:** Android can restart the accessibility service after
-  reboot once the service has been enabled by the user.
-- **Sleep/Wake brightness:** hold both screens dark briefly after wake, then
-  ramp back to the brightness levels saved before closing or sleeping.
-- **Long-close reset:** optionally use a chosen default brightness after a
-  configurable period closed, from 0 minutes to 24 hours.
+### Brightness tab
+- **Two bindings, one per screen.** Each binding has its own modifier,
+  Brighter and Dimmer controls, step size and screen (Top / Bottom / Both),
+  e.g. R1 + Volume for the top screen and R2 + Volume for the bottom. Binding 2
+  has its own on/off switch.
+- **Tap to record.** Tap Modifier, Brighter or Dimmer and press the control.
+  Buttons, volume keys, and (with **Enable D-pad / Joystick**) D-pad or stick
+  directions all work.
+- **Per-binding steps.** Step per press, plus step per repeat when
+  "Same step while holding" is off.
+- **Enable switch** turns brightness control on or off; the Quick Settings tile
+  and the long-press **Brightness on / off** shortcut flip it too.
 
-The non-root path is built around Android's accessibility key-event handling.
-Root input support is optional and exists for controls that Android does not
-deliver through the same route.
+### Volume tab
+- **Enable switch** for volume handling (off by default, so the volume keys
+  behave normally until you turn it on).
+- **Modes:** Top screen (Android's normal volume), Bottom screen, Linked (both
+  screens together, optionally keeping a balance you set by hand), and Follow
+  focus (the screen you last used).
+- **Step per press** from 1 to 10.
+- A brightness modifier + volume still changes brightness; only plain volume
+  presses go to the volume mode.
+- Bottom-screen volume and follow-focus need **Shizuku** (or root). The top
+  screen works without it. If you used Thor Volume Link before, turn off its
+  accessibility service so both apps don't react.
+
+### Everywhere
+- **Status panel** on both tabs: Ready / Setup needed, key detection and
+  Shizuku, then brightness and volume status.
+- **Header** shows live levels for the open tab (brightness % or volume) and
+  a settings gear.
+- **Settings** (gear): repeat speed, Sleep / Wake fade-in and long-close reset,
+  and Input (Shizuku/root, D-pad / Joystick, suspend conflicting services,
+  reserve modifier buttons).
+- **Bottom-screen level sync:** brightness and volume changes on the bottom
+  screen are written back to AYN's settings so AYN's own controls stay in step.
+- **Reset App** restores defaults while keeping permissions and setup.
+- Catppuccin Macchiato theme, subtle haptics, no click sounds, controller
+  focus rings.
 
 ## Brightness behavior
 
-When **Both** is selected, Thor's Lightning adjusts the top and bottom screens
+When **Both** is selected, Thor's Hammer adjusts the top and bottom screens
 relative to their current brightness. Each press applies the same step to each
 screen, so if the top screen is brighter than the bottom screen, it stays
 brighter while both move up or down together.
 
-The screens only become equal when they already start at the same brightness,
-or when one screen reaches the minimum or maximum brightness limit and the
-other screen continues until it reaches the same limit. This keeps manual
-top/bottom brightness differences intact during normal adjustment.
-
 ## Requirements
 
 - AYN Thor running the compatible Android 13 firmware
-- Accessibility service enabled for Thor's Lightning
-- Android brightness write permission
-- Root or Shizuku access only if using D-pad or analog-stick mappings
+- Accessibility service enabled for Thor's Hammer
+- Android "Modify system settings" permission
+- Shizuku or root for: D-pad / stick bindings, suspending other services,
+  bottom-screen volume, and follow focus
 
-Root axis input has platform limits. D-pad and stick directions may still be
-visible to games, and analog sticks cannot physically send both directions on
-the same axis at the same time. Use volume or standard buttons when complete
-input reservation matters.
+Root/Shizuku axis input has platform limits: D-pad and stick directions may
+still reach games, so use buttons or volume keys when full reservation matters.
 
 ## Installation
 
-1. Download the APK from the latest GitHub release and install it as a normal
-   Android APK.
-2. Open **Thor's Lightning** and tap **Set up permissions**.
-3. Follow the on-screen guide to allow **Modify system settings**, then enable
-   **Thor's Lightning controls** under Android Accessibility. Return to the app
-   after each settings page; the guide will take you to the next step.
-4. Choose the modifier, Bright, Dimmer, and screen-target options. For root
-   input, tap a Bright or Dimmer **Record** button and move the direction you
-   want to assign; the app identifies the D-pad or stick automatically.
-5. Enable privileged input only if you want D-pad or analog-stick mappings,
-   then approve Root or Shizuku access when prompted.
-6. If another accessibility app responds to the same controller buttons, turn
-   on **Suspend services during hold** and select the services to pause while
-   the modifier is held.
-7. To configure wake behavior, turn on **Fade in on wake**, then tap
-   **Fade settings** to set the dark hold, fade duration, and the optional
-   long-close reset time and level. The long-close reset is off by default.
+1. Install the APK from the latest GitHub release.
+2. Open **Thor's Hammer**; the setup popup walks you through **Modify system
+   settings** and the **Thor's Hammer controls** accessibility service.
+3. Optional: connect Shizuku (or allow root) from **Settings → Input**, then
+   turn on **Enable D-pad / Joystick** to record D-pad or stick directions.
+4. On the **Brightness** tab, tap each control of a binding to record it and
+   pick its screen. Turn on Binding 2 for the other screen.
+5. Optional: on the **Volume** tab, turn on **Enable** and pick a mode.
+6. Optional: **Settings → Sleep / Wake** for the fade-in on wake.
 
 ## Building
 
@@ -228,7 +200,7 @@ Additional improvements:
 - Gated Sleep/Wake brightness and service selection until required permissions
   are configured, with clearer, shorter warnings.
 
-### v1.4.0 (fork)
+### v1.4.0 (Thor's Hammer)
 
 - Second binding with its own modifier, controls and screen target.
 - Catppuccin Macchiato redesign with first-run setup popup and status header.
@@ -238,6 +210,8 @@ Additional improvements:
 - Reset App button, subtle haptics, no click sounds.
 - Gradle 9.7.1 / AGP 9.4.0.
 - Volume tab with Thor Volume Link's top / bottom / linked / follow-focus modes.
+- Renamed to Thor's Hammer; Status panel on both tabs, per-tab Enable switches,
+  underline tabs and tab-aware header levels.
 
 ## License
 

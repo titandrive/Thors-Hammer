@@ -1,6 +1,6 @@
 # Security
 
-Thor's Lightning uses an accessibility service and can optionally request root
+Thor's Hammer uses an accessibility service and can optionally request root
 access for D-pad and analog-stick input handling. Only install APKs from this
 repository's release page and compare the published SHA-256 checksum.
 

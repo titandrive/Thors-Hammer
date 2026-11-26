@@ -35,7 +35,7 @@ public class BrightnessKeyService extends AccessibilityService {
     static volatile CaptureListener captureListener;
     private int swallowUpKey = KeyEvent.KEYCODE_UNKNOWN;
 
-    private static final String TAG = "ThorsLightningWake";
+    private static final String TAG = "ThorsHammerWake";
     // Temporary diagnostic mode: verify that close writes zero and that the
     // system does not restore brightness on open before re-enabling the ramp.
     private static final boolean WAKE_ZERO_TEST_MODE = false;
@@ -560,7 +560,7 @@ public class BrightnessKeyService extends AccessibilityService {
 
     private void adjustBrightness(int direction, int stepPercent, int target) {
         if (!Settings.System.canWrite(this)) {
-            Toast.makeText(this, "Allow Modify system settings for Thor’s Lightning", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Allow Modify system settings for Thor’s Hammer", Toast.LENGTH_LONG).show();
             stopRepeating();
             return;
         }
