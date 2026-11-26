@@ -104,6 +104,7 @@ public class MainActivity extends Activity {
                     runOnUiThread(this::applyBrightnessEnabled);
                 }
                 if (Prefs.ROOT_AXES.equals(key) || Prefs.GENTLE_WAKE.equals(key)
+                        || Prefs.ENABLED.equals(key)
                         || Prefs.B_ENABLED.equals(key) || Prefs.VOL_ENABLED.equals(key)
                         || Prefs.VOL_MODE.equals(key)) {
                     runOnUiThread(this::refreshStatusCard);
@@ -1237,6 +1238,7 @@ public class MainActivity extends Activity {
         boolean shizuku = ShizukuSupport.available();
         boolean dpad = prefs.getBoolean(Prefs.ROOT_AXES, false);
         boolean fade = prefs.getBoolean(Prefs.GENTLE_WAKE, false);
+        boolean bright = prefs.getBoolean(Prefs.ENABLED, true);
         boolean vol = prefs.getBoolean(Prefs.VOL_ENABLED, false);
         String volMode = vol ? VOL_MODES[prefs.getInt(Prefs.VOL_MODE, 0)][0] : "Off";
         AudioManager audio = getSystemService(AudioManager.class);
@@ -1244,7 +1246,7 @@ public class MainActivity extends Activity {
         int main = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
         int bottom = VolumeLink.readSecondary(this);
         boolean conflict = volumeLinkConflict();
-        String signature = service + "," + write + "," + shizuku + "," + dpad + "," + fade + ","
+        String signature = bright + "," + service + "," + write + "," + shizuku + "," + dpad + "," + fade + ","
                 + volMode + "," + main + "/" + max + "," + bottom + "," + conflict;
         if (signature.equals(statusSignature)) return;
         statusSignature = signature;
@@ -1253,14 +1255,14 @@ public class MainActivity extends Activity {
         addStatusRow("Key detection", service ? "On" : "Needed", service);
         addStatusRow("Shizuku", shizuku ? "Connected" : "Off", shizuku);
         addStatusGroup("Brightness", false);
+        addStatusRow("Brightness control", bright ? "On" : "Off", bright);
         addStatusRow("Brightness access", write ? "Allowed" : "Needed", write);
         addStatusRow("D-pad / Joystick", dpad ? "On" : "Off", dpad);
         addStatusRow("Fade in on wake", fade ? "On" : "Off", fade);
         addStatusGroup("Volume", false);
-        addStatusRow("Volume keys", volMode, vol);
-        addStatusRow("Top volume", main + " / " + max, true);
-        addStatusRow("Bottom volume", bottom < 0 ? "\u2014" : bottom + " / " + VolumeLink.SECONDARY_MAX,
-                bottom >= 0);
+        addStatusRow("Volume control", vol ? "On" : "Off", vol);
+        String modeName = VOL_MODES[prefs.getInt(Prefs.VOL_MODE, 0)][0];
+        addStatusRow("Volume mode", modeName, vol);
         if (conflict) addStatusRow("Thor Volume Link", "Turn off", false);
     }
 
@@ -1288,7 +1290,7 @@ public class MainActivity extends Activity {
         TextView state = text("\u25CF  " + value, 14, true);
         state.setTextColor(good ? Palette.GREEN : Palette.OVERLAY1);
         row.addView(state);
-        statusRows.addView(row, matchMargins(0, 3, 0, 3));
+        statusRows.addView(row, matchMargins(0, 2, 0, 2));
     }
 
     /** Small standalone card holding the reset-to-defaults button. */
