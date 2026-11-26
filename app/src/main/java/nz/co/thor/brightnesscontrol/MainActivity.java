@@ -426,6 +426,10 @@ public class MainActivity extends Activity {
             }
             prefs.edit().putBoolean(Prefs.ROOT_AXES, checked).apply();
             if (checked) {
+                // Turn any D-pad keys saved while this was off into directions.
+                Prefs.migrateDpadButtons(prefs);
+                updateRootMappingLabels();
+                updateBindingSummaries();
                 // Root axes are brightness inputs only; do not allow a stick or
                 // D-pad direction to remain as the modifier.
                 prefs.edit().remove(Prefs.ROOT_MODIFIER_SOURCE)
@@ -1322,6 +1326,12 @@ public class MainActivity extends Activity {
         body.addView(details, matchMargins(0, 0, 0, 0));
         ScrollView scroll = new ScrollView(this);
         scroll.addView(body);
+        // After a tap Android is in touch mode, and the first D-pad press is
+        // spent leaving it (and highlighting a view) instead of being
+        // delivered. Leave touch mode up front, parking focus on the blank
+        // body, so the very first press records.
+        body.setFocusable(true);
+        body.setFocusableInTouchMode(true);
 
         recordDialog = new AlertDialog.Builder(this)
                 .setCustomTitle(centeredDialogTitle("Record " + title))
@@ -1356,6 +1366,12 @@ public class MainActivity extends Activity {
             beginCapture(preference, label, title, allowsVolume);
         });
         recordDialog.show();
+        body.requestFocusFromTouch();
+        Button cancelButton = recordDialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+        if (cancelButton != null) {
+            cancelButton.setFocusable(false); // touch only, see above
+            cancelButton.setFocusableInTouchMode(false);
+        }
         if (recordDialog.getWindow() != null) {
             int width = Math.min(dp(520), (int) (getResources().getDisplayMetrics().widthPixels * 0.6f));
             recordDialog.getWindow().setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1397,6 +1413,7 @@ public class MainActivity extends Activity {
 
     private void beginCapture(String preference, TextView label, String title,
                               boolean allowsVolume) {
+        BrightnessKeyService.captureListener = this::onServiceCapturedKey;
         if (prefs.getBoolean(Prefs.ROOT_AXES, false) && Prefs.isDirectional(preference)) {
             beginRootDirectionCapture(preference, label, title);
             return;
@@ -1410,6 +1427,7 @@ public class MainActivity extends Activity {
     }
 
     private void beginRootDirectionCapture(String preference, TextView label, String title) {
+        BrightnessKeyService.captureListener = this::onServiceCapturedKey;
         if (!hasRootAccess() && !ShizukuSupport.available()) {
             Toast.makeText(this, "Root access or authorized Shizuku is required to record a D-pad or stick direction", Toast.LENGTH_LONG).show();
             return;
@@ -1650,7 +1668,20 @@ public class MainActivity extends Activity {
         return true;
     }
 
+    /** A key the accessibility service caught while the Record popup is open. */
+    private void onServiceCapturedKey(int keyCode) {
+        runOnUiThread(() -> {
+            if (!capturing || recordDialogCompleted) return;
+            if (keyCode == KeyEvent.KEYCODE_BACK) endCapture(false, 0);
+            else endCapture(true, keyCode);
+        });
+    }
+
     private void endCapture(boolean save, int code) {
+        if (!(save && Prefs.MODIFIER.equals(capturePreference)
+                && prefs.getBoolean(Prefs.ROOT_AXES, false) && isDpadKey(code))) {
+            BrightnessKeyService.captureListener = null;
+        }
         if (save && Prefs.MODIFIER.equals(capturePreference)
                 && prefs.getBoolean(Prefs.ROOT_AXES, false) && isDpadKey(code)) {
             Toast.makeText(this, "Directional controls cannot be used as the modifier", Toast.LENGTH_LONG).show();
@@ -1673,6 +1704,7 @@ public class MainActivity extends Activity {
             }
             // Refresh after clearing any previous root modifier mapping so the
             // visible label always reflects the newly saved control.
+            Prefs.migrateDpadButtons(prefs);
             updateRootMappingLabels();
             updateSafetyText();
             finishRecordDialog(swappedTitle == null
@@ -1968,6 +2000,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        BrightnessKeyService.captureListener = null;
         stopRootDirectionRecorder();
         super.onDestroy();
     }

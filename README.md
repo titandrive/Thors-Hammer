@@ -221,6 +221,16 @@ Additional improvements:
 - Gated Sleep/Wake brightness and service selection until required permissions
   are configured, with clearer, shorter warnings.
 
+### v1.4.0 (fork)
+
+- Second binding with its own modifier, controls and screen target.
+- Catppuccin Macchiato redesign with first-run setup popup and status header.
+- Simpler Fade in on wake toggle with a compact Fade settings popup.
+- Compact, cancellable record popup.
+- Quick Settings tile and launcher shortcut to turn the app on or off.
+- Reset App button, subtle haptics, no click sounds.
+- Gradle 9.7.1 / AGP 9.4.0.
+
 ## License
 
 Thor's Lightning's original source and icon are available under the

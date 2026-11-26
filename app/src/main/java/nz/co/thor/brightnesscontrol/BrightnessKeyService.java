@@ -23,6 +23,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class BrightnessKeyService extends AccessibilityService {
+    /**
+     * Set by the app while its Record popup is open. Key focus on the Thor
+     * follows the last-touched screen, so the popup may not receive the key;
+     * the service sees every key and hands it over instead.
+     */
+    interface CaptureListener {
+        void onCapturedKey(int keyCode);
+    }
+
+    static volatile CaptureListener captureListener;
+    private int swallowUpKey = KeyEvent.KEYCODE_UNKNOWN;
+
     private static final String TAG = "ThorsLightningWake";
     // Temporary diagnostic mode: verify that close writes zero and that the
     // system does not restore brightness on open before re-enabling the ramp.
@@ -217,8 +229,19 @@ public class BrightnessKeyService extends AccessibilityService {
     protected boolean onKeyEvent(KeyEvent event) {
         SharedPreferences prefs = Prefs.get(this);
         refreshRootMonitor(prefs);
+        if (event.getAction() == KeyEvent.ACTION_UP && event.getKeyCode() == swallowUpKey) {
+            // Release of a key that was just recorded: keep it from the focused app too.
+            swallowUpKey = KeyEvent.KEYCODE_UNKNOWN;
+            return true;
+        }
         if (prefs.getBoolean(Prefs.CAPTURING, false)) {
-            return false;
+            CaptureListener listener = captureListener;
+            if (listener == null) return false;
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                swallowUpKey = event.getKeyCode();
+                listener.onCapturedKey(event.getKeyCode());
+            }
+            return true;
         }
 
         int keyCode = event.getKeyCode();
