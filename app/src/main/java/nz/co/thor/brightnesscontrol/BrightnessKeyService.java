@@ -669,7 +669,7 @@ public class BrightnessKeyService extends AccessibilityService {
 
     private void emergencyDisable() {
         Prefs.get(this).edit().putBoolean(Prefs.ENABLED, false).apply();
-        Toast.makeText(this, "Brightness shortcut disabled — reopen the app to enable it", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "Brightness control switched off — turn it back on in the app", Toast.LENGTH_LONG).show();
         modifierDown = false;
         modifierBDown = false;
         stopRepeating();

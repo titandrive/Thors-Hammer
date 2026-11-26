@@ -103,15 +103,6 @@ final class Prefs {
         return context.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
-    /** Flip the master Enabled switch; returns the new state. */
-    static boolean toggleEnabled(Context context) {
-        boolean enabled = !get(context).getBoolean(ENABLED, true);
-        get(context).edit().putBoolean(ENABLED, enabled).apply();
-        android.service.quicksettings.TileService.requestListeningState(context,
-                new android.content.ComponentName(context, ToggleTileService.class));
-        return enabled;
-    }
-
     static int modifier(Context context) {
         return get(context).getInt(MODIFIER, KeyEvent.KEYCODE_BUTTON_R1);
     }

@@ -333,7 +333,7 @@ public class MainActivity extends Activity {
                 + "and press the button or D-pad direction you want to assign.\n\n"
                 + "Add a second binding to control the other screen with its own "
                 + "modifier and step."), matchMargins(0, 0, 0, 6));
-        // Brightness on/off (the Quick Settings tile and shortcut flip this too).
+        // Brightness control on/off.
         LinearLayout bindingsHeader = (LinearLayout) mappings.getChildAt(mappings.getChildCount() - 1);
         enabledSwitch = new Switch(this);
         enabledSwitch.setText("Enable");

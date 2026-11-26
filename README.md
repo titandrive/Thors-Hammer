@@ -41,8 +41,7 @@ on an AYN Thor.
   directions all work.
 - **Per-binding steps.** Step per press, plus step per repeat when
   "Same step while holding" is off.
-- **Enable switch** turns brightness control on or off; the Quick Settings tile
-  and the long-press **Brightness on / off** shortcut flip it too.
+- **Enable switch** turns brightness control on or off.
 
 ### Volume tab
 - **Enable switch** for volume handling (off by default, so the volume keys
@@ -206,7 +205,6 @@ Additional improvements:
 - Catppuccin Macchiato redesign with first-run setup popup and status header.
 - Simpler Fade in on wake toggle with a compact Fade settings popup.
 - Compact, cancellable record popup.
-- Quick Settings tile and launcher shortcut to turn the app on or off.
 - Reset App button, subtle haptics, no click sounds.
 - Gradle 9.7.1 / AGP 9.4.0.
 - Volume tab with Thor Volume Link's top / bottom / linked / follow-focus modes.
