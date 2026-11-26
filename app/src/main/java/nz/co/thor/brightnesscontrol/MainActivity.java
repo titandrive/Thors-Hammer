@@ -60,6 +60,8 @@ public class MainActivity extends Activity {
     private View brightnessPage;
     private View volumePage;
     private LinearLayout volLinkedOptions;
+    private LinearLayout volBody;
+    private Runnable volPaint;
 
     /** Input controls; built once, shown inside the Settings popup. */
     private LinearLayout inputCard;
@@ -99,6 +101,7 @@ public class MainActivity extends Activity {
                     if (enabledSwitch.isChecked() != enabled) {
                         enabledSwitch.setChecked(enabled);
                     }
+                    runOnUiThread(this::applyBrightnessEnabled);
                 }
                 if (Prefs.ROOT_AXES.equals(key) || Prefs.GENTLE_WAKE.equals(key)
                         || Prefs.B_ENABLED.equals(key) || Prefs.VOL_ENABLED.equals(key)
@@ -200,14 +203,6 @@ public class MainActivity extends Activity {
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
 
-        enabledSwitch = new Switch(this);
-        enabledSwitch.setTextSize(14);
-        enabledSwitch.setChecked(prefs.getBoolean(Prefs.ENABLED, true));
-        enabledSwitch.setText(enabledSwitch.isChecked() ? "Enabled" : "Disabled");
-        enabledSwitch.setOnCheckedChangeListener((button, checked) -> {
-            prefs.edit().putBoolean(Prefs.ENABLED, checked).apply();
-            button.setText(checked ? "Enabled" : "Disabled");
-        });
         // Bare gear, same style as the info icons; ring only when focused.
         TextView settings = new TextView(this);
         settings.setText("\u2699\uFE0E");
@@ -220,9 +215,8 @@ public class MainActivity extends Activity {
         settings.setContentDescription("Settings");
         settings.setOnClickListener(v -> showSettingsDialog());
         LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(dp(40), dp(40));
-        settingsParams.setMargins(dp(4), 0, dp(10), 0);
+        settingsParams.setMargins(dp(4), 0, 0, 0);
         header.addView(settings, settingsParams);
-        header.addView(enabledSwitch);
         root.addView(header, matchMargins(0, 0, 0, 2));
 
         // [ Bindings or Volume keys (two-thirds) | Status + Reset (both tabs) ]
@@ -334,12 +328,26 @@ public class MainActivity extends Activity {
         addRootControls(setup);
         addReserveControls(setup);
 
-        mappings.addView(headerWithInfo("Bindings", "Bindings",
+        mappings.addView(headerWithInfo("Control brightness", "Control brightness",
                 "Hold a binding's modifier, then press its Brighter or Dimmer to change "
                 + "the screen it targets.\n\nTap a control (Modifier, Brighter or Dimmer) "
                 + "and press the button or D-pad direction you want to assign.\n\n"
                 + "Add a second binding to control the other screen with its own "
                 + "modifier and step."), matchMargins(0, 0, 0, 6));
+        // Brightness on/off (the Quick Settings tile and shortcut flip this too).
+        LinearLayout bindingsHeader = (LinearLayout) mappings.getChildAt(mappings.getChildCount() - 1);
+        enabledSwitch = new Switch(this);
+        enabledSwitch.setText("Enable");
+        enabledSwitch.setTextSize(14);
+        enabledSwitch.setChecked(prefs.getBoolean(Prefs.ENABLED, true));
+        enabledSwitch.setOnCheckedChangeListener((button, checked) -> {
+            prefs.edit().putBoolean(Prefs.ENABLED, checked).apply();
+            applyBrightnessEnabled();
+        });
+        LinearLayout.LayoutParams switchLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        switchLp.setMargins(0, 0, dp(12), 0);
+        bindingsHeader.addView(enabledSwitch, 1, switchLp);
         bindingsContainer = new LinearLayout(this);
         bindingsContainer.setOrientation(LinearLayout.VERTICAL);
         mappings.addView(bindingsContainer, matchMargins(0, 0, 0, 0));
@@ -660,6 +668,7 @@ public class MainActivity extends Activity {
         bindingsContainer.addView(bindingBox(false), left);
         bindingsContainer.addView(bindingBox(true), right);
         polish(bindingsContainer);
+        applyBrightnessEnabled();
     }
 
     /** This binding's step per press, plus step per repeat when not linked. */
@@ -707,7 +716,8 @@ public class MainActivity extends Activity {
 
     private void setEnabledDeep(View view, boolean enabled) {
         view.setEnabled(enabled);
-        view.setFocusable(enabled);
+        // Only interactive views take controller focus; plain labels never do.
+        if (view.isClickable() || view instanceof SeekBar) view.setFocusable(enabled);
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) setEnabledDeep(group.getChildAt(i), enabled);
@@ -847,6 +857,21 @@ public class MainActivity extends Activity {
         return segments;
     }
 
+    /** Dim and lock the volume controls while volume control is switched off. */
+    private void applyVolumeEnabled() {
+        if (volBody == null) return;
+        boolean on = prefs.getBoolean(Prefs.VOL_ENABLED, false);
+        volBody.setAlpha(on ? 1f : 0.4f);
+        setEnabledDeep(volBody, on);
+        if (on && volPaint != null) volPaint.run(); // re-applies the Linked options state
+    }
+
+    /** Dim the bindings while brightness control is switched off. */
+    private void applyBrightnessEnabled() {
+        if (bindingsContainer == null) return;
+        bindingsContainer.setAlpha(prefs.getBoolean(Prefs.ENABLED, true) ? 1f : 0.4f);
+    }
+
     private void applyTab() {
         if (brightnessPage != null) haptic(getWindow().getDecorView());
         boolean volume = prefs.getInt(Prefs.UI_TAB, 0) == 1;
@@ -869,22 +894,27 @@ public class MainActivity extends Activity {
         LinearLayout keys = card();
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(section("Volume keys"), new LinearLayout.LayoutParams(0,
+        head.addView(section("Control volume"), new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         Switch handle = new Switch(this);
-        handle.setText("Handle volume keys");
+        handle.setText("Enable");
         handle.setTextSize(14);
         handle.setChecked(prefs.getBoolean(Prefs.VOL_ENABLED, false));
         handle.setOnCheckedChangeListener((b, checked) -> {
             prefs.edit().putBoolean(Prefs.VOL_ENABLED, checked).apply();
+            applyVolumeEnabled();
             refreshVolumePage();
         });
         head.addView(handle);
         keys.addView(head, matchMargins(0, 4, 0, 2));
+        // Everything below the header; dimmed and locked while volume is off.
+        volBody = new LinearLayout(this);
+        volBody.setOrientation(LinearLayout.VERTICAL);
+        keys.addView(volBody, matchMargins(0, 0, 0, 0));
         TextView hint = text("Volume keys pressed without a brightness modifier. "
                 + "Modifier + volume still changes brightness.", 12, false);
         hint.setTextColor(Palette.SUBTEXT0);
-        keys.addView(hint, matchMargins(0, 0, 0, 10));
+        volBody.addView(hint, matchMargins(0, 0, 0, 10));
 
         LinearLayout tiles = new LinearLayout(this);
         tiles.setOrientation(LinearLayout.HORIZONTAL);
@@ -917,7 +947,8 @@ public class MainActivity extends Activity {
             final int mode = i;
             tile.setOnClickListener(v -> {
                 prefs.edit().putInt(Prefs.VOL_MODE, mode).apply();
-                paint[0].run();
+                volPaint = paint[0];
+        paint[0].run();
             });
             tileViews[i] = tile;
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
@@ -925,10 +956,10 @@ public class MainActivity extends Activity {
             lp.setMargins(i == 0 ? 0 : dp(4), 0, i == VOL_MODES.length - 1 ? 0 : dp(4), 0);
             tiles.addView(tile, lp);
         }
-        keys.addView(tiles, matchMargins(0, 0, 0, 10));
+        volBody.addView(tiles, matchMargins(0, 0, 0, 10));
 
         TextView stepValue = valueText();
-        keys.addView(valueRow("Step per press", stepValue), matchMargins(0, 2, 0, 0));
+        volBody.addView(valueRow("Step per press", stepValue), matchMargins(0, 2, 0, 0));
         SeekBar step = new SeekBar(this);
         step.setMax(9);
         step.setTickMark(tickMark());
@@ -941,9 +972,9 @@ public class MainActivity extends Activity {
                 if (fromUser) prefs.edit().putInt(Prefs.VOL_STEP, value + 1).apply();
             }
         });
-        keys.addView(step, matchMargins(0, 0, 0, 4));
+        volBody.addView(step, matchMargins(0, 0, 0, 4));
 
-        keys.addView(text("Linked", 14, true), matchMargins(0, 2, 0, 2));
+        volBody.addView(text("Linked", 14, true), matchMargins(0, 2, 0, 2));
         volLinkedOptions = new LinearLayout(this);
         volLinkedOptions.setOrientation(LinearLayout.VERTICAL);
         volLinkedOptions.addView(prefSwitch("Keep volume balance (remember a bottom level you set by hand)",
@@ -952,11 +983,12 @@ public class MainActivity extends Activity {
                 Prefs.VOL_AUTO_FOLLOW, true), matchMargins(0, 0, 0, 0));
         volLinkedOptions.addView(prefSwitch("Show Android\u2019s volume panel",
                 Prefs.VOL_SHOW_PANEL, true), matchMargins(0, 0, 0, 0));
-        keys.addView(volLinkedOptions, matchMargins(0, 0, 0, 0));
+        volBody.addView(volLinkedOptions, matchMargins(0, 0, 0, 0));
         paint[0].run();
 
         ScrollView page = scrollCard(keys);
         polish(page);
+        applyVolumeEnabled();
         return page;
     }
 
@@ -1217,10 +1249,11 @@ public class MainActivity extends Activity {
         if (signature.equals(statusSignature)) return;
         statusSignature = signature;
         statusRows.removeAllViews();
-        addStatusGroup("Brightness", true);
+        // App-wide first, then each feature's own status.
         addStatusRow("Key detection", service ? "On" : "Needed", service);
-        addStatusRow("Brightness access", write ? "Allowed" : "Needed", write);
         addStatusRow("Shizuku", shizuku ? "Connected" : "Off", shizuku);
+        addStatusGroup("Brightness", false);
+        addStatusRow("Brightness access", write ? "Allowed" : "Needed", write);
         addStatusRow("D-pad / Joystick", dpad ? "On" : "Off", dpad);
         addStatusRow("Fade in on wake", fade ? "On" : "Off", fade);
         addStatusGroup("Volume", false);

@@ -24,7 +24,7 @@ public class ToggleTileService extends TileService {
         tile.setState(enabled ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         tile.setIcon(Icon.createWithResource(this, R.drawable.ic_bolt));
         tile.setLabel(getString(R.string.tile_label));
-        if (android.os.Build.VERSION.SDK_INT >= 29) tile.setSubtitle(enabled ? "On" : "Off");
+        if (android.os.Build.VERSION.SDK_INT >= 29) tile.setSubtitle(enabled ? "Brightness on" : "Brightness off");
         tile.updateTile();
     }
 }

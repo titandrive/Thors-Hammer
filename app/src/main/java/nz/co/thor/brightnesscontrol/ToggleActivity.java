@@ -10,7 +10,7 @@ public class ToggleActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         boolean enabled = Prefs.toggleEnabled(this);
-        Toast.makeText(this, enabled ? "Thor's Lightning on" : "Thor's Lightning off",
+        Toast.makeText(this, enabled ? "Brightness control on" : "Brightness control off",
                 Toast.LENGTH_SHORT).show();
         finish();
     }

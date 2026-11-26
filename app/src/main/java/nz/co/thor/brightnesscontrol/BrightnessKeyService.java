@@ -278,7 +278,7 @@ public class BrightnessKeyService extends AccessibilityService {
         boolean volumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_UP
                 || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN;
         if (volumeKey && volumeLink != null && (volumeLink.isHolding(keyCode)
-                || (!modifierDown && !modifierBDown && isRemappingEnabled()
+                || (!modifierDown && !modifierBDown
                 && prefs.getBoolean(Prefs.VOL_ENABLED, false)))) {
             return volumeLink.onVolumeKey(event, isScreenInteractive());
         }
