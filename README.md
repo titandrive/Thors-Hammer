@@ -36,6 +36,13 @@ This is a fork of [HughesTechNZ/Thors-Lightning](https://github.com/HughesTechNZ
   button.
 - **Better recording popup.** It shows a short prompt with a countdown bar, and
   can be cancelled with Cancel, Back or a tap outside.
+- **Volume tab** (adapted from
+  [Thor Volume Link](https://github.com/pth2000/ThorVolumeLink), MIT). Route the
+  volume keys to the top screen, the bottom screen, both (linked, optionally
+  keeping a hand-set balance), or whichever screen has focus. A brightness
+  modifier + volume still changes brightness. Bottom-screen volume needs
+  Shizuku or root. Turn off Thor Volume Link's own accessibility service if you
+  use this.
 - **Quick on/off.** Use the Quick Settings tile, or long-press the app icon for
   a **Turn on / off** shortcut.
 - **Reset App.** A reset-to-defaults button that clears bindings and settings
@@ -230,6 +237,7 @@ Additional improvements:
 - Quick Settings tile and launcher shortcut to turn the app on or off.
 - Reset App button, subtle haptics, no click sounds.
 - Gradle 9.7.1 / AGP 9.4.0.
+- Volume tab with Thor Volume Link's top / bottom / linked / follow-focus modes.
 
 ## License
 

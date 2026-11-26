@@ -43,6 +43,20 @@ final class Prefs {
     static final String ROOT_B_BRIGHT_DIRECTION = "root_b_bright_direction";
     static final String ROOT_B_DIM_SOURCE = "root_b_dim_source";
     static final String ROOT_B_DIM_DIRECTION = "root_b_dim_direction";
+    // Volume (adapted from Thor Volume Link). Off by default so volume keys
+    // behave exactly as before until the user turns it on.
+    static final String VOL_ENABLED = "vol_enabled";
+    static final String VOL_MODE = "vol_mode";
+    static final String VOL_STEP = "vol_step";
+    static final String VOL_KEEP_BALANCE = "vol_keep_balance";
+    static final String VOL_BALANCE = "vol_balance";
+    static final String VOL_AUTO_FOLLOW = "vol_auto_follow";
+    static final String VOL_SHOW_PANEL = "vol_show_panel";
+    static final String UI_TAB = "ui_tab";
+    static final int VOL_MODE_PRIMARY = 0;
+    static final int VOL_MODE_SECONDARY = 1;
+    static final int VOL_MODE_LINKED = 2;
+    static final int VOL_MODE_FOCUS = 3;
     static final String ROOT_AXES = "root_axes";
     static final String AXIS_SOURCE = "axis_source";
     static final String ROOT_BRIGHT_DIRECTION = "root_bright_direction";

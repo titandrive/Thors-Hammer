@@ -50,6 +50,29 @@ final class RootAccessibilityController {
         return shell("settings put secure " + KEY + " '" + escaped + "'") != null;
     }
 
+    /** Like {@link #shell} but returns the whole output (null on failure). */
+    static String shellAll(String command) {
+        try {
+            Process process;
+            if (ShizukuSupport.available()) {
+                java.lang.reflect.Method method = Class.forName("rikka.shizuku.Shizuku")
+                        .getDeclaredMethod("newProcess", String[].class, String[].class, String.class);
+                method.setAccessible(true);
+                process = (Process) method.invoke(null, new Object[]{new String[]{"sh", "-c", command}, null, null});
+            } else {
+                process = new ProcessBuilder("su", "-c", command)
+                        .redirectErrorStream(true).start();
+            }
+            StringBuilder out = new StringBuilder();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) out.append(line).append('\n');
+            return process.waitFor() == 0 ? out.toString() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     static String shell(String command) {
         try {
             Process process;

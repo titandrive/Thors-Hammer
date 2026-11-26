@@ -213,6 +213,9 @@ public class BrightnessKeyService extends AccessibilityService {
                 }
             };
 
+    /** Volume-key modes (top / bottom / linked / follow focus). */
+    private VolumeLink volumeLink;
+
     /** Which binding is driving the current press/hold (for its own step). */
     private boolean activeIsB;
 
@@ -267,6 +270,17 @@ public class BrightnessKeyService extends AccessibilityService {
             modifierBDown = down;
             onModifierChanged(down);
             return isRemappingEnabled() && reserveModifier;
+        }
+
+        // Volume keys with no brightness modifier held belong to the volume
+        // modes (when enabled). A key already held by the volume engine keeps
+        // going there until it is released.
+        boolean volumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_UP
+                || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN;
+        if (volumeKey && volumeLink != null && (volumeLink.isHolding(keyCode)
+                || (!modifierDown && !modifierBDown && isRemappingEnabled()
+                && prefs.getBoolean(Prefs.VOL_ENABLED, false)))) {
+            return volumeLink.onVolumeKey(event, isScreenInteractive());
         }
 
         // Binding B takes priority while its modifier is held; otherwise fall
@@ -345,6 +359,9 @@ public class BrightnessKeyService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        if (volumeLink != null) volumeLink.stop();
+        volumeLink = new VolumeLink(this, handler);
+        volumeLink.start();
         Prefs.migrateDpadButtons(Prefs.get(this));
         registerReceiver(screenReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
         IntentFilter screenOn = new IntentFilter(Intent.ACTION_SCREEN_ON);
@@ -685,6 +702,7 @@ public class BrightnessKeyService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        if (volumeLink != null) volumeLink.stop();
         restoreConflictingService();
         handler.removeCallbacksAndMessages(null);
         try { unregisterReceiver(screenReceiver); } catch (Exception ignored) { }
