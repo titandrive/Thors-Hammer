@@ -36,6 +36,8 @@ final class Prefs {
     static final String B_UP_KEY = "binding_b_up_key";
     static final String B_DOWN_KEY = "binding_b_down_key";
     static final String B_TARGET = "binding_b_target";
+    static final String B_PRESS_STEP = "binding_b_press_step";
+    static final String B_HOLD_STEP = "binding_b_hold_step";
     // Binding B's D-pad / stick directions (recorded through root or Shizuku).
     static final String ROOT_B_BRIGHT_SOURCE = "root_b_bright_source";
     static final String ROOT_B_BRIGHT_DIRECTION = "root_b_bright_direction";
@@ -98,6 +100,19 @@ final class Prefs {
 
     static int modifier(Context context) {
         return get(context).getInt(MODIFIER, KeyEvent.KEYCODE_BUTTON_R1);
+    }
+
+    /** Step (percent) for one press of a binding; Binding 2 starts from Binding 1's. */
+    static int pressStep(SharedPreferences prefs, boolean second) {
+        int first = prefs.getInt(PRESS_STEP, prefs.getInt(STEP, 5));
+        return second ? prefs.getInt(B_PRESS_STEP, first) : first;
+    }
+
+    /** Step (percent) per repeat while held; follows the press step when linked. */
+    static int holdStep(SharedPreferences prefs, boolean second) {
+        if (prefs.getBoolean(LINK_HOLD_STEP, true)) return pressStep(prefs, second);
+        int first = prefs.getInt(HOLD_STEP, pressStep(prefs, false));
+        return second ? prefs.getInt(B_HOLD_STEP, first) : first;
     }
 
     /** Default key for any mapping preference, covering both bindings. */

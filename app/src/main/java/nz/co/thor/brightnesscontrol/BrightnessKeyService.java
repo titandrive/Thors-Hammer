@@ -213,12 +213,14 @@ public class BrightnessKeyService extends AccessibilityService {
                 }
             };
 
+    /** Which binding is driving the current press/hold (for its own step). */
+    private boolean activeIsB;
+
     private final Runnable repeater = new Runnable() {
         @Override
         public void run() {
             if ((modifierDown || modifierBDown) && activeDirection != 0 && isRemappingEnabled()) {
-                int holdStep = Prefs.get(BrightnessKeyService.this).getInt(Prefs.HOLD_STEP,
-                        Prefs.get(BrightnessKeyService.this).getInt(Prefs.STEP, 5));
+                int holdStep = Prefs.holdStep(Prefs.get(BrightnessKeyService.this), activeIsB);
                 adjustBrightness(activeDirection, holdStep, activeTarget);
                 handler.postDelayed(this, repeatDelay());
             }
@@ -310,8 +312,8 @@ public class BrightnessKeyService extends AccessibilityService {
         if (down) {
             int direction = keyCode == bindUp ? 1 : -1;
             if (event.getRepeatCount() == 0) {
-                int pressStep = Prefs.get(this).getInt(Prefs.PRESS_STEP,
-                        Prefs.get(this).getInt(Prefs.STEP, 5));
+                activeIsB = useB;
+                int pressStep = Prefs.pressStep(prefs, useB);
                 activeTarget = useB
                         ? prefs.getInt(Prefs.B_TARGET, Prefs.TARGET_BOTTOM)
                         : prefs.getInt(Prefs.TARGET, Prefs.TARGET_BOTH);
@@ -468,11 +470,13 @@ public class BrightnessKeyService extends AccessibilityService {
         // B wins while its modifier is held, matching the button path.
         int brightnessDirection = 0;
         int target = Prefs.TARGET_BOTH;
+        boolean directionIsB = false;
         if (modifierBDown && prefs.getBoolean(Prefs.B_ENABLED, false) && rootDirectionsMappedB(prefs)) {
             brightnessDirection = matchDirection(prefs, source, direction,
                     Prefs.ROOT_B_BRIGHT_SOURCE, Prefs.ROOT_B_BRIGHT_DIRECTION,
                     Prefs.ROOT_B_DIM_SOURCE, Prefs.ROOT_B_DIM_DIRECTION);
             target = prefs.getInt(Prefs.B_TARGET, Prefs.TARGET_BOTTOM);
+            directionIsB = true;
         }
         if (brightnessDirection == 0 && modifierDown && rootDirectionsMapped(prefs)) {
             brightnessDirection = matchDirection(prefs, source, direction,
@@ -487,8 +491,8 @@ public class BrightnessKeyService extends AccessibilityService {
         }
         if (!isRemappingEnabled() || !isScreenInteractive()) return;
         if (activeDirection != brightnessDirection) {
-            int pressStep = Prefs.get(this).getInt(Prefs.PRESS_STEP,
-                    Prefs.get(this).getInt(Prefs.STEP, 5));
+            activeIsB = directionIsB;
+            int pressStep = Prefs.pressStep(prefs, directionIsB);
             activeTarget = target;
             adjustBrightness(brightnessDirection, pressStep, activeTarget);
             activeDirection = brightnessDirection;

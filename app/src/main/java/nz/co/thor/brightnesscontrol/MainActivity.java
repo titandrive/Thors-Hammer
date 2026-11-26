@@ -46,7 +46,6 @@ public class MainActivity extends Activity {
     private TextView permissionStatus;
     private TextView captureMessage;
     private TextView captureLabel;
-    private TextView stepLabel;
     private TextView repeatLabel;
     private TextView rootStatus;
     private TextView modifierMappingLabel;
@@ -641,9 +640,53 @@ public class MainActivity extends Activity {
             });
             bindingsContainer.addView(add, matchMargins(0, 0, 0, 4));
         }
+        polish(bindingsContainer);
     }
 
-    /** One self-contained binding: modifier, Brighter, Dimmer and its screen. */
+    /** This binding's step per press, plus step per repeat when not linked. */
+    private void addStepControls(LinearLayout box, boolean second) {
+        String pressKey = second ? Prefs.B_PRESS_STEP : Prefs.PRESS_STEP;
+        String holdKey = second ? Prefs.B_HOLD_STEP : Prefs.HOLD_STEP;
+        boolean linked = prefs.getBoolean(Prefs.LINK_HOLD_STEP, true);
+
+        TextView pressValue = valueText();
+        box.addView(valueRow("Step per press", pressValue), matchMargins(0, 6, 0, 0));
+        SeekBar press = new SeekBar(this);
+        press.setMax(24);
+        int savedPress = Prefs.pressStep(prefs, second);
+        press.setProgress(savedPress - 1);
+        pressValue.setText(savedPress + "%");
+        press.setOnSeekBarChangeListener(new SimpleSeekListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                int percent = value + 1;
+                pressValue.setText(percent + "%");
+                if (!fromUser) return;
+                SharedPreferences.Editor edit = prefs.edit().putInt(pressKey, percent);
+                if (!second) edit.putInt(Prefs.STEP, percent);
+                edit.apply();
+            }
+        });
+        box.addView(press, matchMargins(0, 0, 0, 0));
+        if (linked) return;
+
+        TextView holdValue = valueText();
+        box.addView(valueRow("Step per repeat", holdValue), matchMargins(0, 2, 0, 0));
+        SeekBar hold = new SeekBar(this);
+        hold.setMax(24);
+        int savedHold = Prefs.holdStep(prefs, second);
+        hold.setProgress(savedHold - 1);
+        holdValue.setText(savedHold + "%");
+        hold.setOnSeekBarChangeListener(new SimpleSeekListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                int percent = value + 1;
+                holdValue.setText(percent + "%");
+                if (fromUser) prefs.edit().putInt(holdKey, percent).apply();
+            }
+        });
+        box.addView(hold, matchMargins(0, 0, 0, 0));
+    }
+
+    /** One self-contained binding: modifier, Brighter, Dimmer, steps and its screen. */
     private LinearLayout bindingBox(boolean second) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -684,6 +727,8 @@ public class MainActivity extends Activity {
                 prefs.getInt(upPref, Prefs.defaultKey(upPref)), true);
         addMappingRow(box, "Dimmer", downPref,
                 prefs.getInt(downPref, Prefs.defaultKey(downPref)), true);
+
+        addStepControls(box, second);
 
         box.addView(text("Screen", 13, true), margins(0, 6, 0, 0));
         box.addView(second
@@ -759,66 +804,24 @@ public class MainActivity extends Activity {
     private void addBehaviourControls(LinearLayout behaviour) {
 
         behaviour.addView(section("Brightness"), margins(0, 4, 0, 0));
-        stepLabel = valueText();
-        behaviour.addView(valueRow("Step per press", stepLabel), matchMargins(0, 0, 0, 0));
-        SeekBar step = new SeekBar(this);
-        step.setMax(24);
-        int savedPress = prefs.getInt(Prefs.PRESS_STEP, prefs.getInt(Prefs.STEP, 5));
-        step.setProgress(savedPress - 1);
-        updateStepLabel(savedPress);
-        behaviour.addView(step, matchMargins(0, 0, 0, 2));
-
+        // Step sizes live in each binding box; these two apply to both.
         Switch linkHold = new Switch(this);
         linkHold.setText("Same step while holding");
         linkHold.setTextSize(13);
         linkHold.setChecked(prefs.getBoolean(Prefs.LINK_HOLD_STEP, true));
-        behaviour.addView(linkHold, matchMargins(0, 0, 0, 0));
-        TextView holdLabel = valueText();
-        LinearLayout holdRow = valueRow("Step per repeat", holdLabel);
-        behaviour.addView(holdRow, matchMargins(0, 2, 0, 0));
-        SeekBar hold = new SeekBar(this);
-        hold.setMax(24);
-        int savedHold = prefs.getInt(Prefs.HOLD_STEP, savedPress);
-        hold.setProgress(savedHold - 1);
-        holdLabel.setText(savedHold + "%");
-        boolean linked = linkHold.isChecked();
-        hold.setEnabled(!linked);
-        holdRow.setAlpha(linked ? 0.45f : 1f);
-        hold.setAlpha(linked ? 0.45f : 1f);
-        hold.setOnSeekBarChangeListener(new SimpleSeekListener() {
-            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
-                int percent = value + 1;
-                holdLabel.setText(percent + "%");
-                if (fromUser) prefs.edit().putInt(Prefs.HOLD_STEP, percent).apply();
-            }
-        });
-        behaviour.addView(hold, matchMargins(0, 0, 0, 2));
-        step.setOnSeekBarChangeListener(new SimpleSeekListener() {
-            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
-                int percent = value + 1;
-                updateStepLabel(percent);
-                if (fromUser) {
-                    SharedPreferences.Editor edit = prefs.edit().putInt(Prefs.PRESS_STEP, percent).putInt(Prefs.STEP, percent);
-                    if (prefs.getBoolean(Prefs.LINK_HOLD_STEP, true)) {
-                        edit.putInt(Prefs.HOLD_STEP, percent);
-                        hold.setProgress(value);
-                    }
-                    edit.apply();
+        linkHold.setOnCheckedChangeListener((button, checked) -> {
+            SharedPreferences.Editor edit = prefs.edit().putBoolean(Prefs.LINK_HOLD_STEP, checked);
+            if (!checked) {
+                // Unlinking starts each binding's repeat step at its press step.
+                edit.putInt(Prefs.HOLD_STEP, Prefs.pressStep(prefs, false));
+                if (prefs.getBoolean(Prefs.B_ENABLED, false)) {
+                    edit.putInt(Prefs.B_HOLD_STEP, Prefs.pressStep(prefs, true));
                 }
             }
+            edit.apply();
+            rebuildBindings();
         });
-        linkHold.setOnCheckedChangeListener((button, checked) -> {
-            prefs.edit().putBoolean(Prefs.LINK_HOLD_STEP, checked)
-                    .putInt(Prefs.HOLD_STEP, checked ? prefs.getInt(Prefs.PRESS_STEP, savedPress) : prefs.getInt(Prefs.HOLD_STEP, savedHold)).apply();
-            hold.setEnabled(!checked);
-            holdRow.setAlpha(checked ? 0.45f : 1f);
-            hold.setAlpha(checked ? 0.45f : 1f);
-            if (checked) {
-                int value = prefs.getInt(Prefs.PRESS_STEP, savedPress);
-                hold.setProgress(value - 1);
-                holdLabel.setText(value + "%");
-            }
-        });
+        behaviour.addView(linkHold, matchMargins(0, 0, 0, 0));
 
         repeatLabel = valueText();
         behaviour.addView(valueRow("Repeat speed", repeatLabel), matchMargins(0, 2, 0, 0));
@@ -1278,6 +1281,7 @@ public class MainActivity extends Activity {
     private static final int CORNER = 6;
 
     private View recordDetails;
+    private TextView recordSubText;
 
     private void showRecordPrompt(String preference, TextView label, String title,
                                    boolean allowsVolume) {
@@ -1293,6 +1297,7 @@ public class MainActivity extends Activity {
         recordDialogMessage.setTextColor(Palette.TEXT);
         recordDialogMessage.setGravity(Gravity.CENTER);
         TextView sub = text(forWhat, 15, false);
+        recordSubText = sub;
         sub.setTextColor(Palette.SUBTEXT1);
         sub.setGravity(Gravity.CENTER);
         TextView hint = text(Prefs.isModifier(preference)
@@ -1681,6 +1686,16 @@ public class MainActivity extends Activity {
     }
 
     private void endCapture(boolean save, int code) {
+        if (save && isDpadKey(code) && !prefs.getBoolean(Prefs.ROOT_AXES, false)) {
+            // The Thor's D-pad never reaches the service as a key, so a D-pad
+            // saved here would never fire. Explain and keep waiting.
+            if (recordSubText != null) {
+                recordSubText.setText("D-pad needs \u201CEnable D-pad / Joystick\u201D turned on.\n"
+                        + "Turn it on in Input, or press another button.");
+                recordSubText.setTextColor(Palette.PEACH);
+            }
+            return;
+        }
         if (!(save && Prefs.MODIFIER.equals(capturePreference)
                 && prefs.getBoolean(Prefs.ROOT_AXES, false) && isDpadKey(code))) {
             BrightnessKeyService.captureListener = null;
@@ -2018,10 +2033,6 @@ public class MainActivity extends Activity {
         BrightnessKeyService.captureListener = null;
         stopRootDirectionRecorder();
         super.onDestroy();
-    }
-
-    private void updateStepLabel(int percent) {
-        stepLabel.setText(percent + "%");
     }
 
     private void updateRepeatLabel(int delay) {
