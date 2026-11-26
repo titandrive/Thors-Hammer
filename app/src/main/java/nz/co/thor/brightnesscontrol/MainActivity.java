@@ -1705,6 +1705,18 @@ public class MainActivity extends Activity {
                 prefs.edit().remove(Prefs.ROOT_MODIFIER_SOURCE)
                         .remove(Prefs.ROOT_MODIFIER_DIRECTION).apply();
             }
+            if (Prefs.isDirectional(capturePreference)) {
+                // A recorded button switches this binding back to buttons:
+                // D-pad directions would otherwise keep overriding it.
+                boolean second = Prefs.isBindingB(capturePreference);
+                prefs.edit()
+                        .remove(second ? Prefs.ROOT_B_BRIGHT_SOURCE : Prefs.ROOT_BRIGHT_SOURCE)
+                        .remove(second ? Prefs.ROOT_B_BRIGHT_DIRECTION : Prefs.ROOT_BRIGHT_DIRECTION)
+                        .remove(second ? Prefs.ROOT_B_DIM_SOURCE : Prefs.ROOT_DIM_SOURCE)
+                        .remove(second ? Prefs.ROOT_B_DIM_DIRECTION : Prefs.ROOT_DIM_DIRECTION)
+                        .apply();
+                updateBindingSummaries();
+            }
             // Refresh after clearing any previous root modifier mapping so the
             // visible label always reflects the newly saved control.
             Prefs.migrateDpadButtons(prefs);
