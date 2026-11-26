@@ -600,7 +600,15 @@ public class BrightnessKeyService extends AccessibilityService {
         return cachedBottomBrightness;
     }
 
+    /**
+     * Last bottom-screen level (1-255) this service set. The bottom panel is
+     * driven through AYN's controller, which never updates
+     * dual_screen_brightness_level, so the app's level bar reads this instead.
+     */
+    static volatile int lastBottomBrightness = -1;
+
     private void setAynDisplayBrightness(int displayId, int value) {
+        if (displayId == 4) lastBottomBrightness = value;
         displayExecutor.execute(() -> {
             if (!AynDisplayController.setBrightness(displayId, value)) {
                 handler.post(() -> Toast.makeText(this,

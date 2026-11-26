@@ -1027,7 +1027,10 @@ public class MainActivity extends Activity {
             top = -1;
         }
         int bottom;
-        try {
+        int serviceBottom = BrightnessKeyService.lastBottomBrightness;
+        if (serviceBottom >= 0) {
+            bottom = Math.round(serviceBottom * 100f / 255f);
+        } else try {
             bottom = Settings.System.getInt(getContentResolver(), "dual_screen_brightness_level");
         } catch (Settings.SettingNotFoundException e) {
             try {
