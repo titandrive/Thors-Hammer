@@ -9,7 +9,44 @@ firmware.
 > Technologies Co., Ltd. AYN and Thor are used only to identify the compatible
 > device. All related trademarks belong to their respective owners.
 
-![Thor's Lightning dashboard](https://raw.githubusercontent.com/HughesTechNZ/Thors-Lightning/main/docs/dashboard-v1.3.png)
+![Thor's Lightning dashboard](docs/dashboard-fork.png)
+
+## Changes in this fork
+
+This is a fork of [HughesTechNZ/Thors-Lightning](https://github.com/HughesTechNZ/Thors-Lightning)
+(v1.3.1). It adds:
+
+- **Two bindings, one per screen.** Add a second binding with its own
+  modifier, Brighter and Dimmer controls and screen target, e.g. L1 + D-pad
+  for the top screen and R1 + D-pad for the bottom. Each binding has a
+  summary line (`L1 + D-pad Up / Down → Top`) and a Top / Bottom / Both
+  selector. Both bindings can use D-pad and stick directions through Shizuku
+  or root.
+- **Redesigned UI** in Catppuccin Macchiato:
+  - Three scrollable columns: Bindings, Brightness, Input.
+  - The header shows a Ready / Setup needed status and an Enabled switch.
+  - Permissions are handled in a first-run setup popup instead of a
+    permanent column.
+  - Switches replace checkboxes, info icons explain each section, and live
+    bars show the current top and bottom brightness.
+  - Subtle rounded corners throughout; popups are compact and fit the top
+    screen.
+- **Simpler Sleep/Wake.** The **Fade in on wake** switch just turns the fade
+  on or off. Timings and the long-close reset live behind a **Fade settings**
+  button.
+- **Better recording popup.** It shows a short prompt with a countdown bar, and
+  can be cancelled with Cancel, Back or a tap outside.
+- **Quick on/off.** Use the Quick Settings tile, or long-press the app icon for
+  a **Turn on / off** shortcut.
+- **Reset App.** A reset-to-defaults button that clears bindings and settings
+  while keeping permissions and setup.
+- **Feel.** Light haptic tick on taps and controller presses; click sounds
+  removed.
+- **Build.** Updated to Gradle 9.7.1 / AGP 9.4.0 so it builds with current
+  Android Studio JDKs.
+
+Fork changes were made with assistance from Claude Code and tested on an AYN
+Thor running the Android 13 firmware.
 
 ## What it does
 
@@ -81,13 +118,14 @@ input reservation matters.
 6. If another accessibility app responds to the same controller buttons, turn
    on **Suspend services during hold** and select the services to pause while
    the modifier is held.
-7. To configure wake behavior, open **Sleep/Wake brightness**. Set the black
-   hold, ramp duration, optional long-close reset, reset time, and reset level.
-   The long-close reset is off by default.
+7. To configure wake behavior, turn on **Fade in on wake**, then tap
+   **Fade settings** to set the dark hold, fade duration, and the optional
+   long-close reset time and level. The long-close reset is off by default.
 
 ## Building
 
-The project requires JDK 17 and Android SDK 35.
+The project uses Gradle 9.7.1 / AGP 9.4.0 and needs JDK 17 or newer (Android
+Studio's bundled JBR works) and Android SDK 35.
 
 ```bash
 ./gradlew :app:test :app:assembleRelease
