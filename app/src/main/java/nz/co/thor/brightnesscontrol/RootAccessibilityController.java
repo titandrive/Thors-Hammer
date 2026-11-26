@@ -50,7 +50,7 @@ final class RootAccessibilityController {
         return shell("settings put secure " + KEY + " '" + escaped + "'") != null;
     }
 
-    private static String shell(String command) {
+    static String shell(String command) {
         try {
             Process process;
             if (ShizukuSupport.available()) {

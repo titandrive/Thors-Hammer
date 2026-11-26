@@ -562,6 +562,7 @@ public class BrightnessKeyService extends AccessibilityService {
             int nextBottom = clamp(currentBottom + direction * bottomDelta, 1, 255);
             cachedBottomBrightness = nextBottom;
             setAynDisplayBrightness(4, nextBottom);
+            scheduleBottomSettingSync(nextBottom);
             }
         } catch (RuntimeException exception) {
             Toast.makeText(this, "Brightness change failed safely", Toast.LENGTH_LONG).show();
@@ -606,6 +607,33 @@ public class BrightnessKeyService extends AccessibilityService {
      * dual_screen_brightness_level, so the app's level bar reads this instead.
      */
     static volatile int lastBottomBrightness = -1;
+
+    private int pendingBottomSync = -1;
+    private final Runnable bottomSettingSync = () -> {
+        int percent = Math.max(1, Math.round(pendingBottomSync * 100f / 255f));
+        displayExecutor.execute(() -> writeBottomSetting(percent));
+    };
+
+    /**
+     * AYN's brightness widget reads dual_screen_brightness_level for the lower
+     * panel, but the controller call above never updates it. Mirror the level
+     * once adjustments settle so the widget (and the app's bar) stay in step.
+     */
+    private void scheduleBottomSettingSync(int value) {
+        pendingBottomSync = value;
+        handler.removeCallbacks(bottomSettingSync);
+        handler.postDelayed(bottomSettingSync, 400);
+    }
+
+    private void writeBottomSetting(int percent) {
+        try {
+            Settings.System.putInt(getContentResolver(), "dual_screen_brightness_level", percent);
+            return;
+        } catch (RuntimeException ignored) {
+            // Non-public System keys are refused to normal apps; use Shizuku/root.
+        }
+        RootAccessibilityController.shell("settings put system dual_screen_brightness_level " + percent);
+    }
 
     private void setAynDisplayBrightness(int displayId, int value) {
         if (displayId == 4) lastBottomBrightness = value;
