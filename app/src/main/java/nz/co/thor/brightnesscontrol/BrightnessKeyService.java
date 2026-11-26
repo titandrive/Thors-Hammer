@@ -24,6 +24,7 @@ import java.util.concurrent.Executors;
 
 public class BrightnessKeyService extends AccessibilityService {
     private static final String TAG = "ThorsLightningWake";
+    private static final String KEY_TAG = "ThorsLightningKeys";
     // Temporary diagnostic mode: verify that close writes zero and that the
     // system does not restore brightness on open before re-enabling the ramp.
     private static final boolean WAKE_ZERO_TEST_MODE = false;
@@ -182,10 +183,13 @@ public class BrightnessKeyService extends AccessibilityService {
         }
     };
     private boolean modifierDown;
+    private boolean modifierBDown;
     private boolean rootModifierDown;
     private boolean volumeUpDown;
     private boolean volumeDownDown;
     private int activeDirection;
+    // Screen target of the binding that started the current press/repeat.
+    private int activeTarget = Prefs.TARGET_BOTH;
     private int cachedBottomBrightness = -1;
     private final ExecutorService displayExecutor = Executors.newSingleThreadExecutor();
     private RootInputMonitor rootInput;
@@ -201,10 +205,10 @@ public class BrightnessKeyService extends AccessibilityService {
     private final Runnable repeater = new Runnable() {
         @Override
         public void run() {
-            if (modifierDown && activeDirection != 0 && isRemappingEnabled()) {
+            if ((modifierDown || modifierBDown) && activeDirection != 0 && isRemappingEnabled()) {
                 int holdStep = Prefs.get(BrightnessKeyService.this).getInt(Prefs.HOLD_STEP,
                         Prefs.get(BrightnessKeyService.this).getInt(Prefs.STEP, 5));
-                adjustBrightness(activeDirection, holdStep);
+                adjustBrightness(activeDirection, holdStep, activeTarget);
                 handler.postDelayed(this, repeatDelay());
             }
         }
@@ -222,41 +226,59 @@ public class BrightnessKeyService extends AccessibilityService {
         int modifier = prefs.getInt(Prefs.MODIFIER, KeyEvent.KEYCODE_BUTTON_R1);
         int upKey = prefs.getInt(Prefs.UP_KEY, KeyEvent.KEYCODE_VOLUME_UP);
         int downKey = prefs.getInt(Prefs.DOWN_KEY, KeyEvent.KEYCODE_VOLUME_DOWN);
+        boolean bEnabled = prefs.getBoolean(Prefs.B_ENABLED, false);
+        int modifierB = bEnabled ? prefs.getInt(Prefs.B_MODIFIER, KeyEvent.KEYCODE_BUTTON_L1)
+                : KeyEvent.KEYCODE_UNKNOWN;
+        int upKeyB = prefs.getInt(Prefs.B_UP_KEY, KeyEvent.KEYCODE_VOLUME_UP);
+        int downKeyB = prefs.getInt(Prefs.B_DOWN_KEY, KeyEvent.KEYCODE_VOLUME_DOWN);
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         boolean reserveModifier = prefs.getBoolean(Prefs.CONSUME_MODIFIER, false);
+        Log.d(KEY_TAG, "key=" + KeyEvent.keyCodeToString(keyCode) + (down ? " down" : " up")
+                + " repeat=" + event.getRepeatCount() + " modA=" + modifierDown + " modB=" + modifierBDown
+                + " enabled=" + isRemappingEnabled() + " interactive=" + isScreenInteractive());
 
         if (keyCode == modifier && !rootModifierMapped(prefs)) {
             modifierDown = down;
-            if (down) suspendConflictingService();
-            else restoreConflictingService();
-            if (!down) {
-                stopRepeating();
-            }
+            onModifierChanged(down);
+            return isRemappingEnabled() && reserveModifier;
+        }
+        if (bEnabled && keyCode == modifierB) {
+            modifierBDown = down;
+            onModifierChanged(down);
             return isRemappingEnabled() && reserveModifier;
         }
 
-        // Once a root direction has been recorded, it becomes the active
-        // source. Do not also run the configured button mappings (including
-        // the default volume keys) at the same time.
-        if (prefs.getBoolean(Prefs.ROOT_AXES, false)
-                && rootDirectionsMapped(prefs)) {
-            volumeUpDown = false;
-            volumeDownDown = false;
+        // Binding B takes priority while its modifier is held; otherwise fall
+        // back to Binding A. Each binding adjusts its own screen target.
+        boolean useB = bEnabled && modifierBDown && (keyCode == upKeyB || keyCode == downKeyB);
+        if (useB && rootDirectionsMappedB(prefs)) {
+            // Binding B uses D-pad/stick directions; its saved buttons are idle.
             return false;
         }
-
-        if (keyCode == upKey) {
+        if (!useB) {
+            // Once a root direction has been recorded, it becomes Binding A's
+            // active source. Do not also run A's configured buttons (including
+            // the default volume keys) at the same time.
+            if (prefs.getBoolean(Prefs.ROOT_AXES, false) && rootDirectionsMapped(prefs)) {
+                volumeUpDown = false;
+                volumeDownDown = false;
+                return false;
+            }
+            if (keyCode != upKey && keyCode != downKey) return false;
+        }
+        int bindUp = useB ? upKeyB : upKey;
+        int bindDown = useB ? downKeyB : downKey;
+        if (keyCode == bindUp) {
             volumeUpDown = down;
-        } else if (keyCode == downKey) {
-            volumeDownDown = down;
         } else {
-            return false;
+            volumeDownDown = down;
         }
 
         boolean enabled = isRemappingEnabled();
-        if (!modifierDown || !enabled || !isScreenInteractive()) {
+        boolean bindingHeld = useB ? modifierBDown : modifierDown;
+        if (!bindingHeld || !enabled || !isScreenInteractive()) {
             // Leave ordinary volume presses alone so other volume-control apps
-            // can continue to receive them. Volume is consumed only when the
+            // can continue to receive them. Volume is consumed only when a
             // modifier is held and this service is actively remapping it.
             return false;
         }
@@ -267,25 +289,43 @@ public class BrightnessKeyService extends AccessibilityService {
         }
 
         if (down) {
-            int direction = keyCode == upKey ? 1 : -1;
+            int direction = keyCode == bindUp ? 1 : -1;
             if (event.getRepeatCount() == 0) {
                 int pressStep = Prefs.get(this).getInt(Prefs.PRESS_STEP,
                         Prefs.get(this).getInt(Prefs.STEP, 5));
-                adjustBrightness(direction, pressStep);
+                activeTarget = useB
+                        ? prefs.getInt(Prefs.B_TARGET, Prefs.TARGET_BOTTOM)
+                        : prefs.getInt(Prefs.TARGET, Prefs.TARGET_BOTH);
+                adjustBrightness(direction, pressStep, activeTarget);
                 activeDirection = direction;
                 handler.removeCallbacks(repeater);
                 handler.postDelayed(repeater, 450);
             }
-        } else if ((keyCode == upKey && activeDirection > 0)
-                || (keyCode == downKey && activeDirection < 0)) {
+        } else if ((keyCode == bindUp && activeDirection > 0)
+                || (keyCode == bindDown && activeDirection < 0)) {
             stopRepeating();
         }
         return true;
     }
 
+    /** Shared press/release handling for either binding's modifier. */
+    private void onModifierChanged(boolean down) {
+        if (down) {
+            suspendConflictingService();
+        } else if (!modifierDown && !modifierBDown) {
+            // Only restore conflicts and stop once no modifier is held.
+            restoreConflictingService();
+            stopRepeating();
+        } else {
+            stopRepeating();
+        }
+    }
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        Log.d(KEY_TAG, "onServiceConnected");
+        Prefs.migrateDpadButtons(Prefs.get(this));
         registerReceiver(screenReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
         IntentFilter screenOn = new IntentFilter(Intent.ACTION_SCREEN_ON);
         registerReceiver(screenReceiver, screenOn);
@@ -406,25 +446,33 @@ public class BrightnessKeyService extends AccessibilityService {
                 stopRepeating();
             }
         }
-        if (!rootDirectionsMapped(prefs)) return;
-        int brightnessDirection = source == prefs.getInt(Prefs.ROOT_BRIGHT_SOURCE, -1)
-                && direction == prefs.getInt(Prefs.ROOT_BRIGHT_DIRECTION, 0) ? 1
-                : source == prefs.getInt(Prefs.ROOT_DIM_SOURCE, -1)
-                && direction == prefs.getInt(Prefs.ROOT_DIM_DIRECTION, 0) ? -1 : 0;
+        // Each binding has its own D-pad/stick directions and screen. Binding
+        // B wins while its modifier is held, matching the button path.
+        int brightnessDirection = 0;
+        int target = Prefs.TARGET_BOTH;
+        if (modifierBDown && prefs.getBoolean(Prefs.B_ENABLED, false) && rootDirectionsMappedB(prefs)) {
+            brightnessDirection = matchDirection(prefs, source, direction,
+                    Prefs.ROOT_B_BRIGHT_SOURCE, Prefs.ROOT_B_BRIGHT_DIRECTION,
+                    Prefs.ROOT_B_DIM_SOURCE, Prefs.ROOT_B_DIM_DIRECTION);
+            target = prefs.getInt(Prefs.B_TARGET, Prefs.TARGET_BOTTOM);
+        }
+        if (brightnessDirection == 0 && modifierDown && rootDirectionsMapped(prefs)) {
+            brightnessDirection = matchDirection(prefs, source, direction,
+                    Prefs.ROOT_BRIGHT_SOURCE, Prefs.ROOT_BRIGHT_DIRECTION,
+                    Prefs.ROOT_DIM_SOURCE, Prefs.ROOT_DIM_DIRECTION);
+            target = prefs.getInt(Prefs.TARGET, Prefs.TARGET_BOTH);
+        }
         if (brightnessDirection == 0) {
+            // Centred, unmapped, or no matching modifier held.
             stopRepeating();
             return;
         }
-        if (!modifierDown || !isRemappingEnabled() || !isScreenInteractive()) {
-            if (direction == 0) stopRepeating();
-            return;
-        }
-        if (direction == 0) {
-            stopRepeating();
-        } else if (activeDirection != brightnessDirection) {
+        if (!isRemappingEnabled() || !isScreenInteractive()) return;
+        if (activeDirection != brightnessDirection) {
             int pressStep = Prefs.get(this).getInt(Prefs.PRESS_STEP,
                     Prefs.get(this).getInt(Prefs.STEP, 5));
-            adjustBrightness(brightnessDirection, pressStep);
+            activeTarget = target;
+            adjustBrightness(brightnessDirection, pressStep, activeTarget);
             activeDirection = brightnessDirection;
             handler.removeCallbacks(repeater);
             handler.postDelayed(repeater, 450);
@@ -438,6 +486,22 @@ public class BrightnessKeyService extends AccessibilityService {
     private boolean rootDirectionsMapped(SharedPreferences prefs) {
         return prefs.getInt(Prefs.ROOT_BRIGHT_DIRECTION, 0) != 0
                 && prefs.getInt(Prefs.ROOT_DIM_DIRECTION, 0) != 0;
+    }
+
+    private boolean rootDirectionsMappedB(SharedPreferences prefs) {
+        return prefs.getBoolean(Prefs.ROOT_AXES, false)
+                && prefs.getInt(Prefs.ROOT_B_BRIGHT_DIRECTION, 0) != 0
+                && prefs.getInt(Prefs.ROOT_B_DIM_DIRECTION, 0) != 0;
+    }
+
+    /** +1 for the Brighter direction, -1 for Dimmer, 0 if neither matches. */
+    private int matchDirection(SharedPreferences prefs, int source, int direction,
+                               String brightSource, String brightDirection,
+                               String dimSource, String dimDirection) {
+        if (direction == 0) return 0;
+        if (source == prefs.getInt(brightSource, -1) && direction == prefs.getInt(brightDirection, 0)) return 1;
+        if (source == prefs.getInt(dimSource, -1) && direction == prefs.getInt(dimDirection, 0)) return -1;
+        return 0;
     }
 
     private boolean rootModifierMapped(SharedPreferences prefs) {
@@ -455,7 +519,8 @@ public class BrightnessKeyService extends AccessibilityService {
         return Prefs.get(this).getInt(Prefs.REPEAT_DELAY, 150);
     }
 
-    private void adjustBrightness(int direction, int stepPercent) {
+    private void adjustBrightness(int direction, int stepPercent, int target) {
+        Log.d(KEY_TAG, "adjust dir=" + direction + " step=" + stepPercent + " target=" + target);
         if (!Settings.System.canWrite(this)) {
             Toast.makeText(this, "Allow Modify system settings for Thor’s Lightning", Toast.LENGTH_LONG).show();
             stopRepeating();
@@ -463,7 +528,6 @@ public class BrightnessKeyService extends AccessibilityService {
         }
 
         try {
-            int target = Prefs.get(this).getInt(Prefs.TARGET, Prefs.TARGET_BOTH);
 
             if (target == Prefs.TARGET_BOTH || target == Prefs.TARGET_TOP) {
                 int currentTop = readSystemInt(Settings.System.SCREEN_BRIGHTNESS, 128);
@@ -533,6 +597,7 @@ public class BrightnessKeyService extends AccessibilityService {
         Prefs.get(this).edit().putBoolean(Prefs.ENABLED, false).apply();
         Toast.makeText(this, "Brightness shortcut disabled — reopen the app to enable it", Toast.LENGTH_LONG).show();
         modifierDown = false;
+        modifierBDown = false;
         stopRepeating();
     }
 
@@ -548,6 +613,8 @@ public class BrightnessKeyService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
+        Log.d(KEY_TAG, "onInterrupt: clearing modA=" + modifierDown + " modB=" + modifierBDown
+                + " suspendActive=" + Prefs.get(this).getBoolean(Prefs.SUSPEND_SERVICE_ACTIVE, false));
         // Accessibility may interrupt/reconnect while the enabled-service
         // list is being edited for a modifier hold. Keep the selected conflict
         // suspended until the modifier is actually released.
@@ -555,6 +622,7 @@ public class BrightnessKeyService extends AccessibilityService {
             restoreConflictingService();
         }
         modifierDown = false;
+        modifierBDown = false;
         volumeUpDown = false;
         volumeDownDown = false;
         stopRepeating();

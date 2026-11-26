@@ -32,6 +32,7 @@ import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Space;
 import android.widget.Switch;
@@ -51,6 +52,10 @@ public class MainActivity extends Activity {
     private TextView modifierMappingLabel;
     private TextView brighterMappingLabel;
     private TextView dimmerMappingLabel;
+    private LinearLayout bindingsContainer;
+    private TextView bModifierMappingLabel;
+    private TextView bBrighterMappingLabel;
+    private TextView bDimmerMappingLabel;
     private TextView safetyLabel;
     private Button brightnessPermissionButton;
     private Button keyDetectionButton;
@@ -127,6 +132,7 @@ public class MainActivity extends Activity {
     }
 
     private void buildUi() {
+        Prefs.migrateDpadButtons(prefs);
         // Migrate any older directional modifier mapping now that root axes
         // are brightness-only inputs.
         if (prefs.getBoolean(Prefs.ROOT_AXES, false)
@@ -170,7 +176,15 @@ public class MainActivity extends Activity {
         columns.addView(setup, weightedCardMargins(0, 0, 6, 0));
         LinearLayout.LayoutParams mappingCardParams = weightedCardMargins(6, 0, 6, 0);
         mappingCardParams.weight = 1f;
-        columns.addView(mappings, mappingCardParams);
+        // Two bindings no longer fit the fixed card height; let it scroll.
+        ScrollView mappingScroll = new ScrollView(this);
+        mappingScroll.setFillViewport(true);
+        mappingScroll.setVerticalScrollBarEnabled(false);
+        mappingScroll.setBackground(mappings.getBackground());
+        mappings.setBackground(null);
+        mappingScroll.addView(mappings, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        columns.addView(mappingScroll, mappingCardParams);
         columns.addView(behaviour, weightedCardMargins(6, 0, 0, 0));
 
         setup.addView(section("Setup"));
@@ -251,60 +265,18 @@ public class MainActivity extends Activity {
 
         addRootControls(setup);
 
-        mappings.addView(section("Button mappings"));
-        TextView mappingHint = text("Tap Record, then press the control you want to assign. Hold the modifier, then use Brighter or Dimmer; rooted direction mappings are moved when prompted.", 12, false);
+        mappings.addView(section("Bindings"));
+        TextView mappingHint = text("Hold a binding's modifier, then press its Brighter or Dimmer. "
+                + "Tap Record and press the control you want to assign.", 12, false);
         mappingHint.setTextColor(themeColor(android.R.attr.textColorSecondary));
-        mappings.addView(mappingHint, margins(0, 3, 0, 7));
-        addMappingRow(mappings, "Modifier", Prefs.MODIFIER,
-                prefs.getInt(Prefs.MODIFIER, KeyEvent.KEYCODE_BUTTON_R1), false);
-        addMappingRow(mappings, "Brighter", Prefs.UP_KEY,
-                prefs.getInt(Prefs.UP_KEY, KeyEvent.KEYCODE_VOLUME_UP), true);
-        addMappingRow(mappings, "Dimmer", Prefs.DOWN_KEY,
-                prefs.getInt(Prefs.DOWN_KEY, KeyEvent.KEYCODE_VOLUME_DOWN), true);
-        captureMessage = text("Use Volume, face, shoulder, stick-click, Start or Select. With root enabled, Record can capture D-pad or stick directions.", 12, false);
-        captureMessage.setTextColor(themeColor(android.R.attr.textColorSecondary));
-        mappings.addView(captureMessage, margins(0, 7, 0, 6));
-
-        LinearLayout reserveBox = new LinearLayout(this);
-        reserveBox.setOrientation(LinearLayout.VERTICAL);
-        reserveBox.setPadding(dp(8), dp(4), dp(8), dp(10));
-        GradientDrawable reserveBackground = new GradientDrawable();
-        reserveBackground.setColor(Color.argb(45, 190, 165, 235));
-        reserveBackground.setCornerRadius(dp(8));
-        reserveBackground.setStroke(dp(1), Color.argb(90, 190, 165, 235));
-        reserveBox.setBackground(reserveBackground);
-        mappings.addView(reserveBox, margins(0, 2, 0, 6));
-
-        CheckBox consume = new CheckBox(this);
-        consume.setText("Reserve the modifier button");
-        consume.setTextSize(14);
-        consume.setChecked(prefs.getBoolean(Prefs.CONSUME_MODIFIER, false));
-        consume.setOnCheckedChangeListener((button, checked) -> {
-            if (!checked) {
-                prefs.edit().putBoolean(Prefs.CONSUME_MODIFIER, false).apply();
-                return;
-            }
-            String modifierName = keyName(
-                    prefs.getInt(Prefs.MODIFIER, KeyEvent.KEYCODE_BUTTON_R1));
-            new AlertDialog.Builder(this)
-                    .setTitle("Reserve modifier button?")
-                    .setMessage("This blocks whichever modifier you have selected from games whenever it is pressed "
-                            + "(currently " + modifierName + "). If you remap the modifier, the newly selected button "
-                            + "will be blocked instead. Brighter and Dimmer buttons are already reserved only while the modifier is held. You have been warned.")
-                    .setPositiveButton("Reserve", (dialog, which) ->
-                            prefs.edit().putBoolean(Prefs.CONSUME_MODIFIER, true).apply())
-                    .setNegativeButton("Cancel", (dialog, which) ->
-                            consume.setChecked(false))
-                    .setOnCancelListener(dialog -> consume.setChecked(false))
-                    .show();
-        });
-        reserveBox.addView(consume, matchMargins(0, 0, 0, 0));
-        TextView consumeHint = text(
-                "Mapped Brighter and Dimmer buttons are reserved while held. If enabled, the Modifier button is also reserved (games do not receive these inputs when being pressed or held).",
-                10, false);
-        consumeHint.setIncludeFontPadding(false);
-        consumeHint.setTextColor(themeColor(android.R.attr.textColorSecondary));
-        reserveBox.addView(consumeHint, margins(0, 0, 0, 0));
+        mappings.addView(mappingHint, margins(0, 3, 0, 6));
+        bindingsContainer = new LinearLayout(this);
+        bindingsContainer.setOrientation(LinearLayout.VERTICAL);
+        mappings.addView(bindingsContainer, matchMargins(0, 0, 0, 0));
+        captureMessage = text("", 11, false);
+        mappings.addView(captureMessage, margins(0, 2, 0, 6));
+        setStaticCaptureMessage();
+        rebuildBindings();
         addBehaviourControls(behaviour);
         setContentView(root);
         root.post(() -> {
@@ -603,32 +575,161 @@ public class MainActivity extends Activity {
         return selected;
     }
 
-    private void addBehaviourControls(LinearLayout behaviour) {
-        behaviour.addView(section("Screens to adjust"));
-        RadioGroup targets = new RadioGroup(this);
-        targets.setOrientation(RadioGroup.HORIZONTAL);
-        RadioButton both = radio("Both", Prefs.TARGET_BOTH);
-        RadioButton top = radio("Top", Prefs.TARGET_TOP);
-        RadioButton bottom = radio("Bottom", Prefs.TARGET_BOTTOM);
-        both.setTextSize(13);
-        top.setTextSize(13);
-        bottom.setTextSize(13);
-        targets.addView(both, new RadioGroup.LayoutParams(0,
+    /** Rebuilds the binding boxes (Binding 1, then Binding 2 or an Add button). */
+    private void rebuildBindings() {
+        if (bindingsContainer == null) return;
+        bindingsContainer.removeAllViews();
+        modifierMappingLabel = brighterMappingLabel = dimmerMappingLabel = null;
+        bModifierMappingLabel = bBrighterMappingLabel = bDimmerMappingLabel = null;
+        bindingsContainer.addView(bindingBox(false), matchMargins(0, 0, 0, 8));
+        if (prefs.getBoolean(Prefs.B_ENABLED, false)) {
+            bindingsContainer.addView(bindingBox(true), matchMargins(0, 0, 0, 8));
+        } else {
+            Button add = button("+  Add second binding");
+            add.setTextSize(14);
+            add.setOnClickListener(v -> {
+                prefs.edit().putBoolean(Prefs.B_ENABLED, true).apply();
+                ensureDistinctModifiers();
+                rebuildBindings();
+            });
+            bindingsContainer.addView(add, matchMargins(0, 0, 0, 4));
+        }
+    }
+
+    /** One self-contained binding: modifier, Brighter, Dimmer and its screen. */
+    private LinearLayout bindingBox(boolean second) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(10), dp(6), dp(10), dp(8));
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(Color.argb(28, 190, 165, 235));
+        background.setCornerRadius(dp(10));
+        background.setStroke(dp(1), Color.argb(110, 190, 165, 235));
+        box.setBackground(background);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text(second ? "Binding 2" : "Binding 1", 15, true);
+        header.addView(title, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        targets.addView(top, new RadioGroup.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        targets.addView(bottom, new RadioGroup.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        int savedTarget = prefs.getInt(Prefs.TARGET, Prefs.TARGET_BOTH);
-        (savedTarget == Prefs.TARGET_TOP ? top
-                : savedTarget == Prefs.TARGET_BOTTOM ? bottom : both).setChecked(true);
-        targets.setOnCheckedChangeListener((group, checkedId) -> {
-            View selected = group.findViewById(checkedId);
-            if (selected != null && selected.getTag() instanceof Integer) {
-                prefs.edit().putInt(Prefs.TARGET, (Integer) selected.getTag()).apply();
+        if (second) {
+            Button remove = button("Remove");
+            remove.setTextSize(13);
+            remove.setOnClickListener(v -> {
+                prefs.edit().putBoolean(Prefs.B_ENABLED, false).apply();
+                rebuildBindings();
+            });
+            header.addView(remove, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
+        }
+        box.addView(header, matchMargins(0, 0, 0, 2));
+
+        String modifierPref = second ? Prefs.B_MODIFIER : Prefs.MODIFIER;
+        String upPref = second ? Prefs.B_UP_KEY : Prefs.UP_KEY;
+        String downPref = second ? Prefs.B_DOWN_KEY : Prefs.DOWN_KEY;
+        addMappingRow(box, "Modifier", modifierPref,
+                prefs.getInt(modifierPref, Prefs.defaultKey(modifierPref)), false);
+        addMappingRow(box, "Brighter", upPref,
+                prefs.getInt(upPref, Prefs.defaultKey(upPref)), true);
+        addMappingRow(box, "Dimmer", downPref,
+                prefs.getInt(downPref, Prefs.defaultKey(downPref)), true);
+
+        box.addView(text("Screen", 13, true), margins(0, 6, 0, 0));
+        box.addView(second
+                ? targetSelector(Prefs.B_TARGET, Prefs.TARGET_BOTTOM)
+                : targetSelector(Prefs.TARGET, Prefs.TARGET_BOTH), matchMargins(0, 0, 0, 0));
+        return box;
+    }
+
+    /** Binding 2 must not reuse Binding 1's modifier. */
+    private void ensureDistinctModifiers() {
+        int first = prefs.getInt(Prefs.MODIFIER, Prefs.defaultKey(Prefs.MODIFIER));
+        int second = prefs.getInt(Prefs.B_MODIFIER, Prefs.defaultKey(Prefs.B_MODIFIER));
+        if (first == second) {
+            prefs.edit().putInt(Prefs.B_MODIFIER, first == KeyEvent.KEYCODE_BUTTON_L1
+                    ? KeyEvent.KEYCODE_BUTTON_R1 : KeyEvent.KEYCODE_BUTTON_L1).apply();
+        }
+    }
+
+    private String modifierNames() {
+        String names = keyName(prefs.getInt(Prefs.MODIFIER, Prefs.defaultKey(Prefs.MODIFIER)));
+        if (prefs.getBoolean(Prefs.B_ENABLED, false)) {
+            names += " and " + keyName(prefs.getInt(Prefs.B_MODIFIER, Prefs.defaultKey(Prefs.B_MODIFIER)));
+        }
+        return names;
+    }
+
+    /**
+     * Top / Bottom / Both as a compact segmented control bound to one target
+     * preference. Single-line pills avoid the wrapping radio labels.
+     */
+    private LinearLayout targetSelector(String preference, int fallback) {
+        LinearLayout segments = new LinearLayout(this);
+        segments.setOrientation(LinearLayout.HORIZONTAL);
+        int[] values = {Prefs.TARGET_TOP, Prefs.TARGET_BOTTOM, Prefs.TARGET_BOTH};
+        String[] names = {"Top", "Bottom", "Both"};
+        TextView[] pills = new TextView[values.length];
+        Runnable[] refresh = new Runnable[1];
+        refresh[0] = () -> {
+            int selected = prefs.getInt(preference, fallback);
+            for (int i = 0; i < pills.length; i++) {
+                boolean on = values[i] == selected;
+                GradientDrawable shape = new GradientDrawable();
+                shape.setCornerRadius(dp(16));
+                shape.setColor(on ? Color.rgb(190, 165, 235) : Color.argb(30, 190, 165, 235));
+                shape.setStroke(dp(1), Color.argb(on ? 0 : 110, 190, 165, 235));
+                pills[i].setBackground(shape);
+                pills[i].setTextColor(on ? Color.rgb(35, 25, 50)
+                        : themeColor(android.R.attr.textColorPrimary));
             }
+        };
+        for (int i = 0; i < values.length; i++) {
+            TextView pill = text(names[i], 13, true);
+            pill.setSingleLine(true);
+            pill.setGravity(Gravity.CENTER);
+            pill.setFocusable(true);
+            pill.setClickable(true);
+            final int value = values[i];
+            pill.setOnClickListener(v -> {
+                prefs.edit().putInt(preference, value).apply();
+                refresh[0].run();
+            });
+            pills[i] = pill;
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(32), 1f);
+            params.setMargins(i == 0 ? 0 : dp(3), 0, i == values.length - 1 ? 0 : dp(3), 0);
+            segments.addView(pill, params);
+        }
+        refresh[0].run();
+        return segments;
+    }
+
+    private void addBehaviourControls(LinearLayout behaviour) {
+        behaviour.addView(section("General"));
+        CheckBox consume = new CheckBox(this);
+        consume.setText("Reserve modifier buttons");
+        consume.setTextSize(14);
+        consume.setChecked(prefs.getBoolean(Prefs.CONSUME_MODIFIER, false));
+        consume.setOnCheckedChangeListener((button, checked) -> {
+            if (!checked) {
+                prefs.edit().putBoolean(Prefs.CONSUME_MODIFIER, false).apply();
+                return;
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("Reserve modifier buttons?")
+                    .setMessage("Games will stop receiving the modifier of every binding ("
+                            + modifierNames() + ") whenever it is pressed. Brighter and Dimmer "
+                            + "buttons are already reserved only while a modifier is held.")
+                    .setPositiveButton("Reserve", (dialog, which) ->
+                            prefs.edit().putBoolean(Prefs.CONSUME_MODIFIER, true).apply())
+                    .setNegativeButton("Cancel", (dialog, which) -> consume.setChecked(false))
+                    .setOnCancelListener(dialog -> consume.setChecked(false))
+                    .show();
         });
-        behaviour.addView(targets, matchMargins(0, 0, 0, 0));
+        behaviour.addView(consume, matchMargins(0, 0, 0, 0));
+        TextView consumeHint = text("Applies to all bindings. Brighter and Dimmer are always "
+                + "reserved while a modifier is held.", 11, false);
+        consumeHint.setTextColor(themeColor(android.R.attr.textColorSecondary));
+        behaviour.addView(consumeHint, margins(0, 0, 0, 6));
 
         behaviour.addView(section("Brightness step"));
         stepLabel = text("", 15, true);
@@ -762,10 +863,16 @@ public class MainActivity extends Activity {
         label.setTextSize(12);
         label.setMaxLines(2);
         label.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        label.setText(mappingLabel(title, currentKey));
+        label.setText(Prefs.B_UP_KEY.equals(preference) ? styledLabel(title, bindingBAssigned(true))
+                : Prefs.B_DOWN_KEY.equals(preference) ? styledLabel(title, bindingBAssigned(false))
+                : Prefs.isBindingB(preference) ? styledLabel(title, keyName(currentKey))
+                : mappingLabel(title, currentKey));
         if (Prefs.MODIFIER.equals(preference)) modifierMappingLabel = label;
         if (Prefs.UP_KEY.equals(preference)) brighterMappingLabel = label;
         if (Prefs.DOWN_KEY.equals(preference)) dimmerMappingLabel = label;
+        if (Prefs.B_MODIFIER.equals(preference)) bModifierMappingLabel = label;
+        if (Prefs.B_UP_KEY.equals(preference)) bBrighterMappingLabel = label;
+        if (Prefs.B_DOWN_KEY.equals(preference)) bDimmerMappingLabel = label;
         row.addView(label, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         Button record = button("Record");
@@ -982,14 +1089,14 @@ public class MainActivity extends Activity {
     private void showRecordPrompt(String preference, TextView label, String title,
                                    boolean allowsVolume) {
         boolean rootDirection = prefs.getBoolean(Prefs.ROOT_AXES, false)
-                && (Prefs.UP_KEY.equals(preference) || Prefs.DOWN_KEY.equals(preference));
-        String message = Prefs.MODIFIER.equals(preference)
+                && Prefs.isDirectional(preference);
+        String message = Prefs.isModifier(preference)
                 ? "Waiting for input...\n\nPress the controller button you want to use for the Modifier button."
                 : rootDirection
                 ? "Waiting for input...\n\nMove the D-pad or stick direction for " + title + "."
                 : "Waiting for input...\n\nPress the controller button you want to use for "
-                + (Prefs.UP_KEY.equals(preference) ? "turning the brightness up."
-                : "turning the brightness down.");
+                + (Prefs.UP_KEY.equals(preference) || Prefs.B_UP_KEY.equals(preference)
+                ? "turning the brightness up." : "turning the brightness down.");
         recordDialogMessage = text(message + "\n\n10 seconds", 16, false);
         recordDialogCompleted = false;
         recordDialogMessage.setGravity(Gravity.CENTER);
@@ -1050,8 +1157,7 @@ public class MainActivity extends Activity {
 
     private void beginCapture(String preference, TextView label, String title,
                               boolean allowsVolume) {
-        if (prefs.getBoolean(Prefs.ROOT_AXES, false)
-                && (Prefs.UP_KEY.equals(preference) || Prefs.DOWN_KEY.equals(preference))) {
+        if (prefs.getBoolean(Prefs.ROOT_AXES, false) && Prefs.isDirectional(preference)) {
             beginRootDirectionCapture(preference, label, title);
             return;
         }
@@ -1096,14 +1202,19 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "This direction is already used by another brightness mapping", Toast.LENGTH_SHORT).show();
             return;
         }
-        boolean recordingBright = Prefs.UP_KEY.equals(capturePreference);
-        boolean recordingDim = Prefs.DOWN_KEY.equals(capturePreference);
+        boolean b = Prefs.isBindingB(capturePreference);
+        String brightSourceKey = b ? Prefs.ROOT_B_BRIGHT_SOURCE : Prefs.ROOT_BRIGHT_SOURCE;
+        String brightDirectionKey = b ? Prefs.ROOT_B_BRIGHT_DIRECTION : Prefs.ROOT_BRIGHT_DIRECTION;
+        String dimSourceKey = b ? Prefs.ROOT_B_DIM_SOURCE : Prefs.ROOT_DIM_SOURCE;
+        String dimDirectionKey = b ? Prefs.ROOT_B_DIM_DIRECTION : Prefs.ROOT_DIM_DIRECTION;
+        boolean recordingBright = Prefs.UP_KEY.equals(capturePreference) || Prefs.B_UP_KEY.equals(capturePreference);
+        boolean recordingDim = Prefs.DOWN_KEY.equals(capturePreference) || Prefs.B_DOWN_KEY.equals(capturePreference);
         boolean swapWithDim = recordingBright
-                && source == prefs.getInt(Prefs.ROOT_DIM_SOURCE, -1)
-                && direction == prefs.getInt(Prefs.ROOT_DIM_DIRECTION, 0);
+                && source == prefs.getInt(dimSourceKey, -1)
+                && direction == prefs.getInt(dimDirectionKey, 0);
         boolean swapWithBright = recordingDim
-                && source == prefs.getInt(Prefs.ROOT_BRIGHT_SOURCE, -1)
-                && direction == prefs.getInt(Prefs.ROOT_BRIGHT_DIRECTION, 0);
+                && source == prefs.getInt(brightSourceKey, -1)
+                && direction == prefs.getInt(brightDirectionKey, 0);
         stopRootDirectionRecorder();
         capturingRootDirection = false;
         capturing = false;
@@ -1112,17 +1223,15 @@ public class MainActivity extends Activity {
             editor.putInt(Prefs.ROOT_MODIFIER_DIRECTION, direction)
                     .putInt(Prefs.ROOT_MODIFIER_SOURCE, source);
         } else {
-            String directionPreference = Prefs.UP_KEY.equals(capturePreference)
-                    ? Prefs.ROOT_BRIGHT_DIRECTION : Prefs.ROOT_DIM_DIRECTION;
-            String sourcePreference = Prefs.UP_KEY.equals(capturePreference)
-                    ? Prefs.ROOT_BRIGHT_SOURCE : Prefs.ROOT_DIM_SOURCE;
+            String directionPreference = recordingBright ? brightDirectionKey : dimDirectionKey;
+            String sourcePreference = recordingBright ? brightSourceKey : dimSourceKey;
             editor.putInt(directionPreference, direction).putInt(sourcePreference, source);
             if (swapWithDim) {
-                editor.putInt(Prefs.ROOT_DIM_DIRECTION, prefs.getInt(Prefs.ROOT_BRIGHT_DIRECTION, 0))
-                        .putInt(Prefs.ROOT_DIM_SOURCE, prefs.getInt(Prefs.ROOT_BRIGHT_SOURCE, -1));
+                editor.putInt(dimDirectionKey, prefs.getInt(brightDirectionKey, 0))
+                        .putInt(dimSourceKey, prefs.getInt(brightSourceKey, -1));
             } else if (swapWithBright) {
-                editor.putInt(Prefs.ROOT_BRIGHT_DIRECTION, prefs.getInt(Prefs.ROOT_DIM_DIRECTION, 0))
-                        .putInt(Prefs.ROOT_BRIGHT_SOURCE, prefs.getInt(Prefs.ROOT_DIM_SOURCE, -1));
+                editor.putInt(brightDirectionKey, prefs.getInt(dimDirectionKey, 0))
+                        .putInt(brightSourceKey, prefs.getInt(dimSourceKey, -1));
             }
         }
         editor.apply();
@@ -1130,7 +1239,7 @@ public class MainActivity extends Activity {
         // The record row can be the currently active view while the monitor
         // callback is completing. Update it explicitly so the new modifier or
         // brightness direction is visible without leaving/reopening the page.
-        if (captureLabel != null) {
+        if (captureLabel != null && !Prefs.isBindingB(capturePreference)) {
             captureLabel.setText(mappingLabel(captureTitle,
                     Prefs.MODIFIER.equals(capturePreference)
                             ? prefs.getInt(Prefs.MODIFIER, KeyEvent.KEYCODE_BUTTON_R1)
@@ -1150,6 +1259,7 @@ public class MainActivity extends Activity {
     }
 
     private boolean rootDirectionConflict(int source, int direction) {
+        if (Prefs.isBindingB(capturePreference)) return false;
         int brightSource = prefs.getInt(Prefs.ROOT_BRIGHT_SOURCE, -1);
         int brightDirection = prefs.getInt(Prefs.ROOT_BRIGHT_DIRECTION, 0);
         int dimSource = prefs.getInt(Prefs.ROOT_DIM_SOURCE, -1);
@@ -1194,12 +1304,12 @@ public class MainActivity extends Activity {
             endCapture(false, 0);
             return true;
         }
-        if (Prefs.MODIFIER.equals(capturePreference) && isDpadKey(code)) {
+        if (Prefs.isModifier(capturePreference) && isDpadKey(code)) {
             Toast.makeText(this, "Directional controls cannot be used as the modifier", Toast.LENGTH_LONG).show();
             return true;
         }
         if (prefs.getBoolean(Prefs.ROOT_AXES, false)
-                && (Prefs.UP_KEY.equals(capturePreference) || Prefs.DOWN_KEY.equals(capturePreference))
+                && Prefs.isDirectional(capturePreference)
                 && isDpadKey(code)) {
             // Root capture must identify the physical D-pad source; never
             // fall back to saving Android's generic DPAD key name.
@@ -1266,12 +1376,12 @@ public class MainActivity extends Activity {
 
     private void setStaticCaptureMessage() {
         if (captureMessage == null) return;
-        captureMessage.setText("Use Volume, face, shoulder, stick-click, Start or Select. With root enabled, Record can capture D-pad or stick directions.");
+        captureMessage.setText("Use Volume, face, shoulder, stick-click, Start or Select. With root or Shizuku, Binding 1 can also record D-pad or stick directions.");
         captureMessage.setTextColor(themeColor(android.R.attr.textColorSecondary));
     }
 
     private String saveMappingWithSwap(int code) {
-        int oldCaptureCode = prefs.getInt(capturePreference, defaultKeyFor(capturePreference));
+        int oldCaptureCode = prefs.getInt(capturePreference, Prefs.defaultKey(capturePreference));
         String conflictingPreference = conflictingPreferenceFor(code);
         SharedPreferences.Editor editor = prefs.edit().putInt(capturePreference, code);
         if (conflictingPreference != null) {
@@ -1281,34 +1391,44 @@ public class MainActivity extends Activity {
         return titleForPreference(conflictingPreference);
     }
 
+    /**
+     * Finds a mapping that already uses {@code code} and would clash with the
+     * one being recorded. Keys may repeat across bindings (both can use
+     * volume), but within a binding every key is unique, and a key that is a
+     * modifier in one binding cannot be any key in the other.
+     */
     private String conflictingPreferenceFor(int code) {
-        if (!Prefs.MODIFIER.equals(capturePreference)
-                && prefs.getInt(Prefs.MODIFIER, KeyEvent.KEYCODE_BUTTON_R1) == code) {
-            return Prefs.MODIFIER;
+        boolean recordingB = Prefs.isBindingB(capturePreference);
+        String[] own = recordingB
+                ? new String[]{Prefs.B_MODIFIER, Prefs.B_UP_KEY, Prefs.B_DOWN_KEY}
+                : new String[]{Prefs.MODIFIER, Prefs.UP_KEY, Prefs.DOWN_KEY};
+        String[] other = recordingB
+                ? new String[]{Prefs.MODIFIER, Prefs.UP_KEY, Prefs.DOWN_KEY}
+                : new String[]{Prefs.B_MODIFIER, Prefs.B_UP_KEY, Prefs.B_DOWN_KEY};
+        for (String preference : own) {
+            if (!preference.equals(capturePreference)
+                    && prefs.getInt(preference, Prefs.defaultKey(preference)) == code) {
+                return preference;
+            }
         }
-        if (!Prefs.UP_KEY.equals(capturePreference)
-                && prefs.getInt(Prefs.UP_KEY, KeyEvent.KEYCODE_VOLUME_UP) == code) {
-            return Prefs.UP_KEY;
-        }
-        if (!Prefs.DOWN_KEY.equals(capturePreference)
-                && prefs.getInt(Prefs.DOWN_KEY, KeyEvent.KEYCODE_VOLUME_DOWN) == code) {
-            return Prefs.DOWN_KEY;
+        if (!prefs.getBoolean(Prefs.B_ENABLED, false)) return null;
+        boolean recordingModifier = Prefs.isModifier(capturePreference);
+        for (String preference : other) {
+            boolean otherIsModifier = Prefs.isModifier(preference);
+            if ((recordingModifier || otherIsModifier)
+                    && prefs.getInt(preference, Prefs.defaultKey(preference)) == code) {
+                return preference;
+            }
         }
         return null;
-    }
-
-    private int defaultKeyFor(String preference) {
-        if (Prefs.MODIFIER.equals(preference)) return KeyEvent.KEYCODE_BUTTON_R1;
-        if (Prefs.UP_KEY.equals(preference)) return KeyEvent.KEYCODE_VOLUME_UP;
-        if (Prefs.DOWN_KEY.equals(preference)) return KeyEvent.KEYCODE_VOLUME_DOWN;
-        return KeyEvent.KEYCODE_UNKNOWN;
     }
 
     private String titleForPreference(String preference) {
-        if (Prefs.MODIFIER.equals(preference)) return "Modifier";
-        if (Prefs.UP_KEY.equals(preference)) return "Brighter";
-        if (Prefs.DOWN_KEY.equals(preference)) return "Dimmer";
-        return null;
+        if (preference == null) return null;
+        String prefix = Prefs.isBindingB(preference) ? "Binding B " : "";
+        if (Prefs.isModifier(preference)) return prefix + "Modifier";
+        if (Prefs.UP_KEY.equals(preference) || Prefs.B_UP_KEY.equals(preference)) return prefix + "Brighter";
+        return prefix + "Dimmer";
     }
 
     @Override
@@ -1602,6 +1722,21 @@ public class MainActivity extends Activity {
                     ? Prefs.ROOT_BRIGHT_DIRECTION : Prefs.ROOT_DIM_DIRECTION, 0);
             assigned = control + " " + rootDirectionName(direction) + " (root)";
         }
+        return styledLabel(title, assigned);
+    }
+
+    /** Binding 2's Brighter/Dimmer: the recorded direction, else the button. */
+    private String bindingBAssigned(boolean bright) {
+        int dir = prefs.getInt(bright ? Prefs.ROOT_B_BRIGHT_DIRECTION : Prefs.ROOT_B_DIM_DIRECTION, 0);
+        if (prefs.getBoolean(Prefs.ROOT_AXES, false) && dir != 0) {
+            int source = prefs.getInt(bright ? Prefs.ROOT_B_BRIGHT_SOURCE : Prefs.ROOT_B_DIM_SOURCE, Prefs.AXIS_DPAD);
+            return sourceName(source) + " " + rootDirectionName(dir) + " (root)";
+        }
+        String pref = bright ? Prefs.B_UP_KEY : Prefs.B_DOWN_KEY;
+        return keyName(prefs.getInt(pref, Prefs.defaultKey(pref)));
+    }
+
+    private CharSequence styledLabel(String title, String assigned) {
         String full = title + "\n" + assigned;
         SpannableString styled = new SpannableString(full);
         styled.setSpan(new BackgroundColorSpan(Color.rgb(95, 75, 125)),
@@ -1646,6 +1781,16 @@ public class MainActivity extends Activity {
         if (dimmerMappingLabel != null) {
             dimmerMappingLabel.setText(mappingLabel("Dimmer",
                     prefs.getInt(Prefs.DOWN_KEY, KeyEvent.KEYCODE_VOLUME_DOWN)));
+        }
+        if (bModifierMappingLabel != null) {
+            bModifierMappingLabel.setText(styledLabel("Modifier",
+                    keyName(prefs.getInt(Prefs.B_MODIFIER, Prefs.defaultKey(Prefs.B_MODIFIER)))));
+        }
+        if (bBrighterMappingLabel != null) {
+            bBrighterMappingLabel.setText(styledLabel("Brighter", bindingBAssigned(true)));
+        }
+        if (bDimmerMappingLabel != null) {
+            bDimmerMappingLabel.setText(styledLabel("Dimmer", bindingBAssigned(false)));
         }
     }
 
