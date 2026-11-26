@@ -217,7 +217,13 @@ public class MainActivity extends Activity {
         // Each column scrolls inside its card so nothing is clipped.
         columns.addView(scrollCard(mappings), weightedCardMargins(0, 0, 6, 0));
         columns.addView(scrollCard(behaviour), weightedCardMargins(6, 0, 6, 0));
-        columns.addView(scrollCard(setup), weightedCardMargins(6, 0, 0, 0));
+        // Right column: Input card on top, a small separate Reset card below.
+        LinearLayout rightColumn = new LinearLayout(this);
+        rightColumn.setOrientation(LinearLayout.VERTICAL);
+        rightColumn.addView(scrollCard(setup), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        rightColumn.addView(resetCard(), matchMargins(0, 12, 0, 0));
+        columns.addView(rightColumn, weightedCardMargins(6, 0, 0, 0));
 
         // Permission controls live in the setup popup, not on the main screen.
         setupPanel = new LinearLayout(this);
@@ -912,6 +918,49 @@ public class MainActivity extends Activity {
                 + "reserved while a modifier is held.", 11, false);
         consumeHint.setTextColor(Palette.SUBTEXT0);
         parent.addView(consumeHint, margins(0, 0, 0, 6));
+    }
+
+    /** Small standalone card holding the reset-to-defaults button. */
+    private LinearLayout resetCard() {
+        LinearLayout card = card();
+        card.setPadding(dp(14), dp(10), dp(14), dp(10));
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView label = section("Reset App");
+        row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        Button reset = button("Reset to defaults");
+        reset.setTextSize(13);
+        reset.setTextColor(Palette.RED);
+        reset.setBackgroundTintList(ColorStateList.valueOf(Palette.withAlpha(Palette.RED, 0x26)));
+        reset.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle("Reset to defaults?")
+                .setMessage("Bindings, brightness steps, fade, D-pad and suspend settings go back "
+                        + "to their defaults. Permissions and setup are kept.")
+                .setPositiveButton("Reset", (dialog, which) -> resetToDefaults())
+                .setNegativeButton("Cancel", null)
+                .show());
+        row.addView(reset);
+        card.addView(row, matchMargins(0, 0, 0, 0));
+        polish(card);
+        return card;
+    }
+
+    private void resetToDefaults() {
+        // Setup progress, the master switch and runtime state survive a reset.
+        java.util.Set<String> keep = new java.util.HashSet<>(java.util.Arrays.asList(
+                Prefs.ENABLED, Prefs.SETUP_GUIDE_SHOWN, Prefs.AWAITING_STEP_TWO,
+                Prefs.BRIGHTNESS_GUIDE_SHOWN, Prefs.KEY_GUIDE_SHOWN,
+                Prefs.ADVANCE_TO_KEY_PENDING, Prefs.ADVANCE_TO_BRIGHTNESS_PENDING,
+                Prefs.SETUP_COMPLETE_SHOWN, Prefs.CONFLICT_WARNING_SHOWN,
+                Prefs.CONFLICT_WARNING_SERVICES, Prefs.ROOT_LIMIT_ACK,
+                Prefs.WAKE_CLOSED_AT, Prefs.CAPTURING, Prefs.SUSPEND_SERVICE_ACTIVE));
+        SharedPreferences.Editor edit = prefs.edit();
+        for (String key : prefs.getAll().keySet()) {
+            if (!keep.contains(key)) edit.remove(key);
+        }
+        edit.apply();
+        Toast.makeText(this, "Settings reset to defaults", Toast.LENGTH_SHORT).show();
+        recreate();
     }
 
     /** Live Top/Bottom brightness, refreshed while the app is in front. */
